@@ -149,6 +149,10 @@ export const ScanRequestSchema = z.object({
   timeframe: TimeframeSchema.optional(),
 });
 
+export const StrategyPolicySchema = z.object({
+  policy: z.enum(['EXIT_PROFIT_ON_REVERSAL', 'LOCK_UNTIL_RESOLUTION']),
+});
+
 export const BrokerConnectSchema = z.object({
   ctidTraderAccountId: z.number().int().positive().optional(),
 });

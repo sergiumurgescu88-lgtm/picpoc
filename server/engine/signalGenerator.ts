@@ -4,10 +4,13 @@ import {
   Candle,
   DirectionBreakdown,
   EquityCurvePoint,
+  ExitReason,
+  LifecycleAuditEvent,
   MarketBias,
   SignalDirection,
   SignalResolutionReport,
   SignalStatus,
+  StrategyPolicy,
   TargetMilestone,
   TechnicalAnalysisReport,
   TimeframeConfluence,
@@ -21,6 +24,7 @@ import {
 } from './indicators.js';
 import { analyzeMarketStructure } from './structure.js';
 import { detectTradingSession, MarketFeedService } from '../services/marketFeed.js';
+import { TerminalStateStore } from '../services/stateStore.js';
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
@@ -34,12 +38,54 @@ const TF_WEIGHTS: Record<Timeframe, number> = {
   D1: 15,
 };
 
+export interface TrendReversalAction {
+  type: 'PROFIT_EXIT' | 'WARNING';
+  signal: TradingSignal;
+  detectedDirection: SignalDirection;
+  confluenceScore: number;
+  message: string;
+}
+
 export class SignalGeneratorEngine {
   private signals: TradingSignal[] = [];
+  private lifecycleEvents: LifecycleAuditEvent[] = [];
+  private policy: StrategyPolicy = 'EXIT_PROFIT_ON_REVERSAL';
+  private reversalConfirmCounts = new Map<string, { direction: SignalDirection; count: number }>();
 
-  constructor(private marketFeed: MarketFeedService) {}
+  constructor(
+    private marketFeed: MarketFeedService,
+    private stateStore?: TerminalStateStore
+  ) {}
+
+  public static isSignalOpen(sig: TradingSignal): boolean {
+    return (
+      !sig.closedAt &&
+      sig.status !== 'CLOSED' &&
+      sig.status !== 'SL_HIT' &&
+      sig.status !== 'TP4_HIT' &&
+      sig.status !== 'REVERSAL_EXIT'
+    );
+  }
 
   public initialize(): void {
+    const persisted = this.stateStore?.load();
+    if (persisted) {
+      this.policy = persisted.policy;
+      this.lifecycleEvents = persisted.lifecycleEvents ?? [];
+      if (persisted.signals.length > 0) {
+        this.signals = persisted.signals;
+        this.signals.sort((a, b) => b.createdAt - a.createdAt);
+        // Ensure at least one initial live signal exists only if no open signal exists AND no recent signal in last 10m
+        const hasOpen = this.signals.some(SignalGeneratorEngine.isSignalOpen);
+        if (!hasOpen) {
+          this.evaluateAndGenerateSignal('M15', true);
+          this.signals.sort((a, b) => b.createdAt - a.createdAt);
+        }
+        this.persistState();
+        return;
+      }
+    }
+
     this.signals = [];
     // Seed authentic historical walk-forward evaluated signals from real candle history
     this.seedHistoricalEvaluatedSignals();
@@ -47,6 +93,51 @@ export class SignalGeneratorEngine {
     this.evaluateAndGenerateSignal('M15', true);
     // Keep newest signals first
     this.signals.sort((a, b) => b.createdAt - a.createdAt);
+    this.persistState();
+  }
+
+  private persistState(): void {
+    this.stateStore?.update({
+      policy: this.policy,
+      signals: this.signals,
+      lifecycleEvents: this.lifecycleEvents,
+    });
+  }
+
+  private recordAuditEvent(event: Omit<LifecycleAuditEvent, 'id' | 'timestamp'>): void {
+    const entry: LifecycleAuditEvent = {
+      ...event,
+      id: `evt-${crypto.randomBytes(4).toString('hex')}`,
+      timestamp: Date.now(),
+    };
+    this.lifecycleEvents.unshift(entry);
+    if (this.lifecycleEvents.length > 200) {
+      this.lifecycleEvents = this.lifecycleEvents.slice(0, 200);
+    }
+  }
+
+  public getPolicy(): StrategyPolicy {
+    return this.policy;
+  }
+
+  public setPolicy(nextPolicy: StrategyPolicy): StrategyPolicy {
+    if (this.policy === nextPolicy) return this.policy;
+    this.policy = nextPolicy;
+    const price = this.marketFeed.getTick().mid;
+    this.recordAuditEvent({
+      type: 'POLICY_CHANGED',
+      price,
+      summary:
+        nextPolicy === 'EXIT_PROFIT_ON_REVERSAL'
+          ? 'Politică schimbată: Închidere protejată pe profit la reversia confirmată a trendului.'
+          : 'Politică schimbată: Blocare strictă până la rezoluție completă (TP4 / Breakeven / SL).',
+    });
+    this.persistState();
+    return this.policy;
+  }
+
+  public getLifecycleEvents(): LifecycleAuditEvent[] {
+    return this.lifecycleEvents;
   }
 
   private seedHistoricalEvaluatedSignals(): void {
@@ -254,6 +345,12 @@ export class SignalGeneratorEngine {
             createdAt: entryCandle.time * 1000,
             updatedAt: closedAt,
             closedAt,
+            exitReason:
+              status === 'SL_HIT'
+                ? 'SL_HIT'
+                : status === 'TP4_HIT'
+                  ? 'TP4_FULL'
+                  : 'BREAKEVEN_LOCK',
           });
 
           cursor = Math.max(cursor + step, exitIndex + 2);
@@ -347,9 +444,22 @@ export class SignalGeneratorEngine {
     timeframe: Timeframe,
     forceInitial = false
   ): TradingSignal | null {
-    const activeCount = this.signals.filter((s) => !s.closedAt && s.status === 'ACTIVE').length;
-    if (!forceInitial && activeCount >= CONFIG.SIGNAL_ENGINE.MAX_ACTIVE_SIGNALS) {
-      return null;
+    return this.evaluateAndGenerateSignalWithReason(timeframe, forceInitial).signal;
+  }
+
+  public evaluateAndGenerateSignalWithReason(
+    timeframe: Timeframe,
+    forceWhenEmpty = false
+  ): { signal: TradingSignal | null; blockReason?: string } {
+    const openSignals = this.signals.filter(SignalGeneratorEngine.isSignalOpen);
+
+    // Enforce single-position discipline: do not stack trades while an active setup runs
+    if (openSignals.length >= CONFIG.SIGNAL_ENGINE.MAX_ACTIVE_SIGNALS) {
+      const current = openSignals[0];
+      return {
+        signal: null,
+        blockReason: `Poziția ${current.direction} (${current.timeframe} @ ${current.entry.toFixed(2)}) este încă activă (${current.status.replace('_', ' ')}). Sistemul așteaptă rezoluția TP1–TP4 / SL sau ieșirea protejată pe profit înainte de a deschide un nou semnal.`,
+      };
     }
 
     const report = this.buildTechnicalReport(timeframe);
@@ -359,20 +469,36 @@ export class SignalGeneratorEngine {
     let direction: SignalDirection | null = null;
     if (confluenceScore >= 22) direction = 'BUY';
     else if (confluenceScore <= -22) direction = 'SELL';
-    else if (forceInitial) {
+    else if (forceWhenEmpty && openSignals.length === 0) {
       direction = indicators.ema20 >= indicators.ema50 ? 'BUY' : 'SELL';
     }
 
-    if (!direction) return null;
+    if (!direction) {
+      return {
+        signal: null,
+        blockReason: `Confluența multi-timeframe (${confluenceScore}) este neutră. Nu se forțează intrare fără direcție clară.`,
+      };
+    }
 
-    const duplicate = this.signals.find(
-      (s) =>
-        s.status === 'ACTIVE' &&
-        s.timeframe === timeframe &&
-        s.direction === direction &&
-        Date.now() - s.createdAt < 5 * 60_000
+    // CRITICAL GUARD: NEVER open an opposite direction signal while an active trade is open!
+    const openOpposite = openSignals.find((s) => s.direction !== direction);
+    if (openOpposite) {
+      return {
+        signal: null,
+        blockReason: `Semnalul ${openOpposite.direction} (${openOpposite.timeframe} @ ${openOpposite.entry.toFixed(2)}) este încă deschis. Sistemul nu schimbă direcția din ${openOpposite.direction} în ${direction} cât timp poziția curentă nu s-a rezolvat sau nu a ieșit protejat pe profit.`,
+      };
+    }
+
+    // Also block opening duplicate same-direction setups on the same timeframe or within 12 minutes
+    const recentSameDir = openSignals.find(
+      (s) => s.direction === direction && (s.timeframe === timeframe || Date.now() - s.createdAt < 12 * 60_000)
     );
-    if (duplicate && !forceInitial) return null;
+    if (recentSameDir) {
+      return {
+        signal: null,
+        blockReason: `Există deja un semnal activ ${recentSameDir.direction} (${recentSameDir.timeframe}) în urmărire TP1–TP4 / SL.`,
+      };
+    }
 
     const atr = Math.max(2.2, indicators.atr14);
     const slDist = round2(atr * 1.45);
@@ -414,8 +540,11 @@ export class SignalGeneratorEngine {
       (trendScore * 0.3 + momentumScore * 0.25 + structureScore * 0.3 + volatilityScore * 0.15)
     );
 
-    if (!forceInitial && confidence < CONFIG.SIGNAL_ENGINE.MIN_CONFIDENCE) {
-      return null;
+    if (!forceWhenEmpty && confidence < CONFIG.SIGNAL_ENGINE.MIN_CONFIDENCE) {
+      return {
+        signal: null,
+        blockReason: `Confluența (${confidence}%) este sub pragul minim (${CONFIG.SIGNAL_ENGINE.MIN_CONFIDENCE}%).`,
+      };
     }
 
     const reasons: string[] = [];
@@ -484,6 +613,7 @@ export class SignalGeneratorEngine {
       },
       createdAt: Date.now(),
       updatedAt: Date.now(),
+      trendWarning: null,
     };
 
     this.signals.unshift(signal);
@@ -491,7 +621,154 @@ export class SignalGeneratorEngine {
       this.signals = this.signals.slice(0, CONFIG.SIGNAL_ENGINE.MAX_HISTORY_SIGNALS);
     }
 
-    return signal;
+    this.recordAuditEvent({
+      type: 'SIGNAL_CREATED',
+      signalId: signal.id,
+      direction: signal.direction,
+      price: signal.entry,
+      summary: `Semnal nou ${signal.direction} (${signal.timeframe}) @ ${signal.entry.toFixed(2)} · SL ${signal.stopLoss.toFixed(2)} · TP1–TP4 definite.`,
+    });
+    this.persistState();
+
+    return { signal };
+  }
+
+  /**
+   * Evaluates confirmed multi-timeframe trend reversals on currently open signals.
+   * - Requires minimum signal age (90s), strong opposite confluence (<= -30 / >= +30),
+   *   and 2 consecutive confirmations to filter intraday noise.
+   * - Under EXIT_PROFIT_ON_REVERSAL: if trade is in profit (pnlPips > 0 or TP1+ reached),
+   *   closes cleanly as REVERSAL_EXIT (WON) and logs the profit exit before any opposite trade can open.
+   * - If trade is in drawdown or under LOCK_UNTIL_RESOLUTION: attaches a trendWarning without closing in loss.
+   */
+  public evaluateTrendReversalOnOpenSignals(): TrendReversalAction[] {
+    const openSignals = this.signals.filter(SignalGeneratorEngine.isSignalOpen);
+    if (openSignals.length === 0) {
+      this.reversalConfirmCounts.clear();
+      return [];
+    }
+
+    const report = this.buildTechnicalReport('M15');
+    const score = report.confluenceScore;
+    const price = this.marketFeed.getTick().mid;
+    const actions: TrendReversalAction[] = [];
+
+    for (const sig of openSignals) {
+      const oppositeDir: SignalDirection = sig.direction === 'BUY' ? 'SELL' : 'BUY';
+      const isStrongOpposite =
+        (sig.direction === 'BUY' && score <= -30) || (sig.direction === 'SELL' && score >= 30);
+
+      if (!isStrongOpposite) {
+        this.reversalConfirmCounts.delete(sig.id);
+        continue;
+      }
+
+      // Require minimum 90 seconds maturity so entry noise doesn't trigger false reversals
+      if (Date.now() - sig.createdAt < 90_000) {
+        continue;
+      }
+
+      const prev = this.reversalConfirmCounts.get(sig.id);
+      const nextCount = prev && prev.direction === oppositeDir ? prev.count + 1 : 1;
+      this.reversalConfirmCounts.set(sig.id, { direction: oppositeDir, count: nextCount });
+
+      if (nextCount < 2) {
+        continue;
+      }
+
+      const inProfit = sig.pnlPips > 0.5 || sig.reachedTargets.includes('TP1');
+
+      if (this.policy === 'EXIT_PROFIT_ON_REVERSAL' && inProfit) {
+        const riskDist = Math.max(0.5, Math.abs(sig.entry - sig.stopLoss));
+        const lockedFloor = sig.reachedTargets.includes('TP3')
+          ? Math.abs(sig.tp3 - sig.entry)
+          : sig.reachedTargets.includes('TP2')
+            ? Math.abs(sig.tp2 - sig.entry)
+            : sig.reachedTargets.includes('TP1')
+              ? Math.abs(sig.tp1 - sig.entry)
+              : 0;
+        const currentDiff = sig.direction === 'BUY' ? price - sig.entry : sig.entry - price;
+        const finalDiff = Math.max(currentDiff, lockedFloor);
+
+        sig.currentPrice = round2(price);
+        sig.pnlPips = round2(finalDiff * 10);
+        sig.rMultiple = round2(finalDiff / riskDist);
+        sig.status = 'REVERSAL_EXIT';
+        sig.resolution = 'WON';
+        sig.closedAt = Date.now();
+        sig.updatedAt = Date.now();
+        sig.exitReason = 'TREND_REVERSAL_PROFIT';
+        const message = `Trend inversat confirmat spre ${oppositeDir} (confluență ${score > 0 ? '+' : ''}${score}). Poziția ${sig.direction} a fost închisă protejat pe profit (+${sig.pnlPips.toFixed(1)} pips / +${sig.rMultiple.toFixed(2)}R) înaintea schimbării direcției.`;
+        sig.exitNote = message;
+        sig.trendWarning = {
+          detectedDirection: oppositeDir,
+          confluenceScore: score,
+          message,
+          detectedAt: Date.now(),
+        };
+
+        this.reversalConfirmCounts.delete(sig.id);
+        this.recordAuditEvent({
+          type: 'TREND_REVERSAL_PROFIT_EXIT',
+          signalId: sig.id,
+          direction: sig.direction,
+          price: sig.currentPrice,
+          pnlPips: sig.pnlPips,
+          rMultiple: sig.rMultiple,
+          summary: message,
+        });
+        actions.push({
+          type: 'PROFIT_EXIT',
+          signal: sig,
+          detectedDirection: oppositeDir,
+          confluenceScore: score,
+          message,
+        });
+      } else {
+        // Only notify once per 4 minutes if warning was already emitted on this open signal
+        const alreadyWarnedRecently =
+          sig.trendWarning &&
+          sig.trendWarning.detectedDirection === oppositeDir &&
+          Date.now() - sig.trendWarning.detectedAt < 4 * 60_000;
+
+        if (!alreadyWarnedRecently) {
+          const message =
+            this.policy === 'LOCK_UNTIL_RESOLUTION'
+              ? `Avertisment schimbare trend spre ${oppositeDir} (confluență ${score > 0 ? '+' : ''}${score}). Politica „Strict TP4/SL” menține poziția ${sig.direction} deschisă până la ținte sau SL (${sig.stopLoss.toFixed(2)}).`
+              : `Avertisment schimbare trend spre ${oppositeDir} (confluență ${score > 0 ? '+' : ''}${score}), dar poziția ${sig.direction} este la ${sig.pnlPips.toFixed(1)} pips. Nu se închide în pierdere și se blochează deschiderea unei direcții opuse până la SL (${sig.stopLoss.toFixed(2)}) sau revenire pe profit.`;
+
+          sig.trendWarning = {
+            detectedDirection: oppositeDir,
+            confluenceScore: score,
+            message,
+            detectedAt: Date.now(),
+          };
+          sig.updatedAt = Date.now();
+
+          this.recordAuditEvent({
+            type: 'TREND_REVERSAL_WARNING',
+            signalId: sig.id,
+            direction: sig.direction,
+            price: round2(price),
+            pnlPips: sig.pnlPips,
+            rMultiple: sig.rMultiple,
+            summary: message,
+          });
+          actions.push({
+            type: 'WARNING',
+            signal: sig,
+            detectedDirection: oppositeDir,
+            confluenceScore: score,
+            message,
+          });
+        }
+      }
+    }
+
+    if (actions.length > 0) {
+      this.persistState();
+    }
+    return actions;
   }
 
   /**
@@ -506,11 +783,12 @@ export class SignalGeneratorEngine {
     const transitions: { signal: TradingSignal; previousStatus: string }[] = [];
 
     for (const sig of this.signals) {
-      if (sig.closedAt || sig.status === 'CLOSED' || sig.status === 'SL_HIT' || sig.status === 'TP4_HIT') {
+      if (!SignalGeneratorEngine.isSignalOpen(sig)) {
         continue;
       }
 
       const prevStatus = sig.status;
+      const prevClosed = Boolean(sig.closedAt);
       sig.currentPrice = round2(price);
       const diff = sig.direction === 'BUY' ? price - sig.entry : sig.entry - price;
       const riskDist = Math.max(0.5, Math.abs(sig.entry - sig.stopLoss));
@@ -528,6 +806,8 @@ export class SignalGeneratorEngine {
           sig.pnlPips = -round2(riskDist * 10);
           sig.rMultiple = -1;
           sig.closedAt = Date.now();
+          sig.exitReason = 'SL_HIT';
+          sig.exitNote = `Stop Loss atins la ${sig.stopLoss.toFixed(2)}.`;
         } else if (hasTp1 && price <= sig.entry) {
           // Breakeven lock after TP1+
           const lockedPrice = sig.reachedTargets.includes('TP3')
@@ -540,6 +820,8 @@ export class SignalGeneratorEngine {
           sig.rMultiple = round2(lockedDiff / riskDist);
           sig.resolution = 'WON';
           sig.closedAt = Date.now();
+          sig.exitReason = 'BREAKEVEN_LOCK';
+          sig.exitNote = `Protecție Breakeven activată după ${sig.status.replace('_', ' ')} (+${sig.pnlPips.toFixed(1)} pips blocați).`;
         } else {
           if (!sig.reachedTargets.includes('TP1') && price >= sig.tp1) {
             sig.reachedTargets.push('TP1');
@@ -561,6 +843,8 @@ export class SignalGeneratorEngine {
             sig.status = 'TP4_HIT';
             sig.resolution = 'WON';
             sig.closedAt = Date.now();
+            sig.exitReason = 'TP4_FULL';
+            sig.exitNote = `Ținta finală TP4 (${sig.tp4.toFixed(2)}) atinsă complet.`;
           }
         }
       } else {
@@ -571,6 +855,8 @@ export class SignalGeneratorEngine {
           sig.pnlPips = -round2(riskDist * 10);
           sig.rMultiple = -1;
           sig.closedAt = Date.now();
+          sig.exitReason = 'SL_HIT';
+          sig.exitNote = `Stop Loss atins la ${sig.stopLoss.toFixed(2)}.`;
         } else if (hasTp1 && price >= sig.entry) {
           const lockedPrice = sig.reachedTargets.includes('TP3')
             ? sig.tp3
@@ -582,6 +868,8 @@ export class SignalGeneratorEngine {
           sig.rMultiple = round2(lockedDiff / riskDist);
           sig.resolution = 'WON';
           sig.closedAt = Date.now();
+          sig.exitReason = 'BREAKEVEN_LOCK';
+          sig.exitNote = `Protecție Breakeven activată după ${sig.status.replace('_', ' ')} (+${sig.pnlPips.toFixed(1)} pips blocați).`;
         } else {
           if (!sig.reachedTargets.includes('TP1') && price <= sig.tp1) {
             sig.reachedTargets.push('TP1');
@@ -603,14 +891,39 @@ export class SignalGeneratorEngine {
             sig.status = 'TP4_HIT';
             sig.resolution = 'WON';
             sig.closedAt = Date.now();
+            sig.exitReason = 'TP4_FULL';
+            sig.exitNote = `Ținta finală TP4 (${sig.tp4.toFixed(2)}) atinsă complet.`;
           }
         }
       }
 
       updatedSignals.push(sig);
-      if (sig.status !== prevStatus) {
+      const statusChanged = sig.status !== prevStatus;
+      const breakevenClosed = !prevClosed && Boolean(sig.closedAt) && sig.exitReason === 'BREAKEVEN_LOCK';
+
+      if (statusChanged || breakevenClosed) {
         transitions.push({ signal: sig, previousStatus: prevStatus });
+        this.recordAuditEvent({
+          type:
+            sig.status === 'SL_HIT'
+              ? 'SL_HIT'
+              : sig.exitReason === 'BREAKEVEN_LOCK'
+                ? 'BREAKEVEN_LOCK'
+                : 'TP_HIT',
+          signalId: sig.id,
+          direction: sig.direction,
+          price: sig.currentPrice,
+          pnlPips: sig.pnlPips,
+          rMultiple: sig.rMultiple,
+          summary:
+            sig.exitNote ||
+            `${sig.status.replace('_', ' ')} atins (${sig.direction} ${sig.timeframe}) @ ${sig.currentPrice.toFixed(2)} (${sig.pnlPips >= 0 ? '+' : ''}${sig.pnlPips.toFixed(1)}p).`,
+        });
       }
+    }
+
+    if (transitions.length > 0) {
+      this.persistState();
     }
 
     return { updatedSignals, transitions };
@@ -618,13 +931,26 @@ export class SignalGeneratorEngine {
 
   public closeSignalManually(id: string): TradingSignal | null {
     const sig = this.signals.find((s) => s.id === id);
-    if (!sig || sig.closedAt || sig.status === 'CLOSED' || sig.status === 'SL_HIT' || sig.status === 'TP4_HIT') {
+    if (!sig || !SignalGeneratorEngine.isSignalOpen(sig)) {
       return null;
     }
     sig.status = 'CLOSED';
     sig.resolution = sig.reachedTargets.includes('TP1') || sig.pnlPips > 0 ? 'WON' : 'LOST';
     sig.closedAt = Date.now();
     sig.updatedAt = Date.now();
+    sig.exitReason = 'MANUAL_CLOSE';
+    sig.exitNote = `Închis manual la ${sig.currentPrice.toFixed(2)} (${sig.pnlPips >= 0 ? '+' : ''}${sig.pnlPips.toFixed(1)} pips).`;
+    this.reversalConfirmCounts.delete(sig.id);
+    this.recordAuditEvent({
+      type: 'MANUAL_CLOSE',
+      signalId: sig.id,
+      direction: sig.direction,
+      price: sig.currentPrice,
+      pnlPips: sig.pnlPips,
+      rMultiple: sig.rMultiple,
+      summary: sig.exitNote,
+    });
+    this.persistState();
     return sig;
   }
 
@@ -635,9 +961,7 @@ export class SignalGeneratorEngine {
     const wonSignals = all.filter((s) => s.resolution === 'WON');
     const lostSignals = all.filter((s) => s.resolution === 'LOST');
     const activePendingSignals = all.filter((s) => s.resolution === 'ACTIVE');
-    const openRunningCount = all.filter(
-      (s) => !s.closedAt && s.status !== 'CLOSED' && s.status !== 'SL_HIT' && s.status !== 'TP4_HIT'
-    ).length;
+    const openRunningCount = all.filter(SignalGeneratorEngine.isSignalOpen).length;
 
     const wonCount = wonSignals.length;
     const lostCount = lostSignals.length;
@@ -695,6 +1019,7 @@ export class SignalGeneratorEngine {
     const slHitCount = all.filter(
       (s) => s.reachedTargets.includes('SL') || s.status === 'SL_HIT'
     ).length;
+    const reversalExitCount = all.filter((s) => s.status === 'REVERSAL_EXIT').length;
     const manualClosedCount = all.filter((s) => s.status === 'CLOSED').length;
 
     const byTimeframe: TimeframeResolutionRow[] = CONFIG.TIMEFRAMES.map((tf) => {
@@ -803,11 +1128,14 @@ export class SignalGeneratorEngine {
         tp4HitRatePct: resolvedCount > 0 ? round2((tp4HitCount / evalBase) * 100) : 0,
         slHitCount,
         slHitRatePct: resolvedCount > 0 ? round2((slHitCount / evalBase) * 100) : 0,
+        reversalExitCount,
         manualClosedCount,
         activePendingCount,
       },
+      policy: this.policy,
       byTimeframe,
       equityCurve,
+      lifecycleEvents: this.lifecycleEvents.slice(0, 60),
       signals: all,
     };
   }

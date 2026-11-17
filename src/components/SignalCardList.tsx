@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { ArrowDownRight, ArrowUpRight, CheckCircle2, XCircle } from 'lucide-react';
-import { TradingSignal } from '../types/trading';
+import { AlertTriangle, ArrowDownRight, ArrowUpRight, CheckCircle2, ShieldCheck, XCircle } from 'lucide-react';
+import { StrategyPolicy, TradingSignal } from '../types/trading';
 
 interface SignalCardListProps {
   signals: TradingSignal[];
   selectedSignalId: string | null;
+  strategyPolicy: StrategyPolicy;
+  onChangePolicy: (policy: StrategyPolicy) => void;
   onSelectSignal: (id: string) => void;
   onCloseSignal: (id: string) => void;
   onLoadInCalculator?: (signal: TradingSignal) => void;
@@ -17,6 +19,7 @@ const STATUS_LABELS: Record<TradingSignal['status'], string> = {
   TP2_HIT: 'TP2 Atins',
   TP3_HIT: 'TP3 Atins',
   TP4_HIT: 'TP4 Atins',
+  REVERSAL_EXIT: 'Ieșire Reversie (+Profit)',
   SL_HIT: 'SL Atins',
   CLOSED: 'Închis',
 };
@@ -24,6 +27,8 @@ const STATUS_LABELS: Record<TradingSignal['status'], string> = {
 export function SignalCardList({
   signals,
   selectedSignalId,
+  strategyPolicy,
+  onChangePolicy,
   onSelectSignal,
   onCloseSignal,
   onLoadInCalculator,
@@ -32,7 +37,12 @@ export function SignalCardList({
   const [filter, setFilter] = useState<'ALL' | 'ACTIVE' | 'CLOSED'>('ALL');
 
   const filtered = signals.filter((s) => {
-    const isOpen = !s.closedAt && s.status !== 'TP4_HIT' && s.status !== 'SL_HIT' && s.status !== 'CLOSED';
+    const isOpen =
+      !s.closedAt &&
+      s.status !== 'TP4_HIT' &&
+      s.status !== 'REVERSAL_EXIT' &&
+      s.status !== 'SL_HIT' &&
+      s.status !== 'CLOSED';
     if (filter === 'ACTIVE') return isOpen;
     if (filter === 'CLOSED') return !isOpen;
     return true;
@@ -110,6 +120,46 @@ export function SignalCardList({
         )}
       </div>
 
+      {/* Strategy Protection Policy Switcher */}
+      <div className="px-4 py-2.5 border-b border-slate-100 dark:border-[#182030] bg-slate-50/60 dark:bg-[#0B0F17] space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+            <ShieldCheck className="w-3.5 h-3.5 text-amber-500" />
+            <span>Protecție Trend & Blocare Direcție</span>
+          </span>
+
+          <div className="inline-flex items-center p-0.5 rounded-lg bg-slate-200/70 dark:bg-[#141A26] border border-slate-200 dark:border-[#1E2738]">
+            <button
+              type="button"
+              onClick={() => onChangePolicy('EXIT_PROFIT_ON_REVERSAL')}
+              className={`px-2 py-1 text-[11px] font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                strategyPolicy === 'EXIT_PROFIT_ON_REVERSAL'
+                  ? 'bg-white dark:bg-[#1F293B] text-emerald-700 dark:text-emerald-400 shadow-xs'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
+            >
+              Ieșire Profit Reversie
+            </button>
+            <button
+              type="button"
+              onClick={() => onChangePolicy('LOCK_UNTIL_RESOLUTION')}
+              className={`px-2 py-1 text-[11px] font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                strategyPolicy === 'LOCK_UNTIL_RESOLUTION'
+                  ? 'bg-white dark:bg-[#1F293B] text-amber-700 dark:text-amber-400 shadow-xs'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
+            >
+              Strict TP4 / SL
+            </button>
+          </div>
+        </div>
+        <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
+          {strategyPolicy === 'EXIT_PROFIT_ON_REVERSAL'
+            ? 'Nu deschide direcție opusă peste poziția activă. Dacă trendul se inversează și poziția este pe plus, închide protejat pe profit; dacă e pe minus, avertizează și păstrează SL.'
+            : 'Blochează orice inversare de strategie până când poziția activă atinge TP4, Breakeven (după TP1) sau SL. Emite doar avertizare la schimbarea trendului.'}
+        </p>
+      </div>
+
       {/* Signal List */}
       <div className="divide-y divide-slate-200 dark:divide-[#1C2331] max-h-[680px] overflow-y-auto">
         {filtered.length === 0 ? (
@@ -124,6 +174,7 @@ export function SignalCardList({
             const isOpen =
               !sig.closedAt &&
               sig.status !== 'TP4_HIT' &&
+              sig.status !== 'REVERSAL_EXIT' &&
               sig.status !== 'SL_HIT' &&
               sig.status !== 'CLOSED';
 
@@ -181,7 +232,7 @@ export function SignalCardList({
                       className={`text-xs font-semibold ${
                         sig.status === 'SL_HIT'
                           ? 'text-rose-600 dark:text-rose-400'
-                          : sig.status.startsWith('TP')
+                          : sig.status.startsWith('TP') || sig.status === 'REVERSAL_EXIT'
                             ? 'text-emerald-600 dark:text-emerald-400'
                             : sig.status === 'ACTIVE'
                               ? 'text-amber-600 dark:text-amber-400'
@@ -270,6 +321,20 @@ export function SignalCardList({
                       <strong className="text-slate-700 dark:text-slate-300">Invalidare:</strong>{' '}
                       {sig.invalidation}
                     </div>
+
+                    {sig.trendWarning && isOpen && (
+                      <div className="rounded-lg border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-2">
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-500" />
+                        <span>{sig.trendWarning.message}</span>
+                      </div>
+                    )}
+
+                    {sig.exitNote && !isOpen && (
+                      <div className="rounded-lg border border-slate-200 dark:border-[#222C40] bg-slate-50 dark:bg-[#141A26] px-3 py-2 text-[11px] text-slate-700 dark:text-slate-300">
+                        <strong className="text-slate-900 dark:text-white">Rezoluție salvată:</strong>{' '}
+                        {sig.exitNote}
+                      </div>
+                    )}
 
                     <div className="pt-1 flex flex-wrap items-center gap-2">
                       {onLoadInCalculator && (

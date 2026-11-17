@@ -6,10 +6,18 @@ export type SignalStatus =
   | 'TP2_HIT'
   | 'TP3_HIT'
   | 'TP4_HIT'
+  | 'REVERSAL_EXIT'
   | 'SL_HIT'
   | 'CLOSED';
 export type TargetMilestone = 'TP1' | 'TP2' | 'TP3' | 'TP4' | 'SL';
 export type SignalResolution = 'WON' | 'LOST' | 'ACTIVE';
+export type StrategyPolicy = 'EXIT_PROFIT_ON_REVERSAL' | 'LOCK_UNTIL_RESOLUTION';
+export type ExitReason =
+  | 'TP4_FULL'
+  | 'SL_HIT'
+  | 'BREAKEVEN_LOCK'
+  | 'TREND_REVERSAL_PROFIT'
+  | 'MANUAL_CLOSE';
 export type MarketBias = 'BULLISH' | 'BEARISH' | 'NEUTRAL';
 export type TradingSession = 'ASIA' | 'LONDON' | 'NEW_YORK' | 'OVERLAP_LDN_NY';
 
@@ -192,6 +200,34 @@ export interface TradingSignal {
   createdAt: number;
   updatedAt: number;
   closedAt?: number;
+  exitReason?: ExitReason;
+  exitNote?: string;
+  trendWarning?: {
+    detectedDirection: SignalDirection;
+    confluenceScore: number;
+    message: string;
+    detectedAt: number;
+  } | null;
+}
+
+export interface LifecycleAuditEvent {
+  id: string;
+  type:
+    | 'SIGNAL_CREATED'
+    | 'TP_HIT'
+    | 'BREAKEVEN_LOCK'
+    | 'TREND_REVERSAL_WARNING'
+    | 'TREND_REVERSAL_PROFIT_EXIT'
+    | 'SL_HIT'
+    | 'MANUAL_CLOSE'
+    | 'POLICY_CHANGED';
+  signalId?: string;
+  direction?: SignalDirection;
+  price: number;
+  pnlPips?: number;
+  rMultiple?: number;
+  summary: string;
+  timestamp: number;
 }
 
 export interface DirectionBreakdown {
@@ -276,11 +312,14 @@ export interface SignalResolutionReport {
     tp4HitRatePct: number;
     slHitCount: number;
     slHitRatePct: number;
+    reversalExitCount: number;
     manualClosedCount: number;
     activePendingCount: number;
   };
+  policy: StrategyPolicy;
   byTimeframe: TimeframeResolutionRow[];
   equityCurve: EquityCurvePoint[];
+  lifecycleEvents: LifecycleAuditEvent[];
   signals: TradingSignal[];
 }
 
@@ -298,7 +337,14 @@ export interface AlertRule {
 
 export interface NotificationEvent {
   id: string;
-  category: 'SIGNAL_NEW' | 'SIGNAL_TP' | 'SIGNAL_SL' | 'ALERT_RULE' | 'SYSTEM';
+  category:
+    | 'SIGNAL_NEW'
+    | 'SIGNAL_TP'
+    | 'SIGNAL_SL'
+    | 'SIGNAL_REVERSAL_EXIT'
+    | 'SIGNAL_REVERSAL_WARN'
+    | 'ALERT_RULE'
+    | 'SYSTEM';
   severity: 'INFO' | 'SUCCESS' | 'WARNING' | 'CRITICAL';
   title: string;
   message: string;

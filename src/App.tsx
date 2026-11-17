@@ -26,6 +26,8 @@ export default function App() {
     candles,
     analysis,
     signals,
+    strategyPolicy,
+    updateStrategyPolicy,
     selectedSignalId,
     setSelectedSignalId,
     alerts,
@@ -120,6 +122,8 @@ export default function App() {
                 <SignalCardList
                   signals={signals}
                   selectedSignalId={selectedSignal?.id ?? null}
+                  strategyPolicy={strategyPolicy}
+                  onChangePolicy={(policy) => void updateStrategyPolicy(policy)}
                   onSelectSignal={setSelectedSignalId}
                   onCloseSignal={(id) => void closeSignal(id)}
                   onLoadInCalculator={(sig) => {

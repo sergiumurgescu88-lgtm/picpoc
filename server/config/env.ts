@@ -17,7 +17,7 @@ export const CONFIG = {
   },
   SIGNAL_ENGINE: {
     MIN_CONFIDENCE: 62,
-    MAX_ACTIVE_SIGNALS: 4,
+    MAX_ACTIVE_SIGNALS: 1,
     MAX_HISTORY_SIGNALS: 120,
   },
 } as const;

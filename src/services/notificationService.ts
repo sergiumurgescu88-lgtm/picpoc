@@ -59,13 +59,15 @@ class NotificationService {
 
       const now = this.audioCtx.currentTime;
       const notes =
-        category === 'SIGNAL_TP'
+        category === 'SIGNAL_TP' || category === 'SIGNAL_REVERSAL_EXIT'
           ? [659.25, 880, 1046.5]
           : category === 'SIGNAL_SL'
             ? [349.23, 277.18]
-            : category === 'SIGNAL_NEW'
-              ? [523.25, 659.25, 783.99]
-              : [587.33, 739.99];
+            : category === 'SIGNAL_REVERSAL_WARN'
+              ? [493.88, 440, 493.88]
+              : category === 'SIGNAL_NEW'
+                ? [523.25, 659.25, 783.99]
+                : [587.33, 739.99];
 
       notes.forEach((freq, idx) => {
         if (!this.audioCtx) return;

@@ -7,6 +7,7 @@ import {
   MarketTick,
   NotificationEvent,
   SecurityAuditSnapshot,
+  StrategyPolicy,
   TechnicalAnalysisReport,
   Timeframe,
   TradingSignal,
@@ -19,6 +20,7 @@ export function useTradingTerminal() {
   const [candles, setCandles] = useState<Candle[]>([]);
   const [analysis, setAnalysis] = useState<TechnicalAnalysisReport | null>(null);
   const [signals, setSignals] = useState<TradingSignal[]>([]);
+  const [strategyPolicy, setStrategyPolicy] = useState<StrategyPolicy>('EXIT_PROFIT_ON_REVERSAL');
   const [selectedSignalId, setSelectedSignalId] = useState<string | null>(null);
   const [alerts, setAlerts] = useState<AlertRule[]>([]);
   const [notifications, setNotifications] = useState<NotificationEvent[]>([]);
@@ -110,6 +112,7 @@ export function useTradingTerminal() {
             new Map(msg.payload.signals.map((s) => [s.id, s])).values()
           );
           setSignals(uniqueSignals);
+          if (msg.payload.policy) setStrategyPolicy(msg.payload.policy);
           setAlerts(msg.payload.alerts);
           setNotifications(msg.payload.notifications);
           if (tfRef.current === 'M15') {
@@ -153,6 +156,10 @@ export function useTradingTerminal() {
                   status: u.status,
                   reachedTargets: u.reachedTargets,
                   resolution: u.resolution,
+                  closedAt: u.closedAt ?? s.closedAt,
+                  exitReason: u.exitReason ?? s.exitReason,
+                  exitNote: u.exitNote ?? s.exitNote,
+                  trendWarning: u.trendWarning !== undefined ? u.trendWarning : s.trendWarning,
                 };
               })
             );
@@ -178,6 +185,12 @@ export function useTradingTerminal() {
         case 'signal:updated': {
           const { signal, notification } = msg.payload;
           setSignals((prev) => prev.map((s) => (s.id === signal.id ? signal : s)));
+          pushNotification(notification);
+          break;
+        }
+        case 'policy:updated': {
+          const { policy, notification } = msg.payload;
+          setStrategyPolicy(policy);
           pushNotification(notification);
           break;
         }
@@ -264,6 +277,24 @@ export function useTradingTerminal() {
     }
   }, []);
 
+  const updateStrategyPolicy = useCallback(async (policy: StrategyPolicy) => {
+    try {
+      const res = await fetch('/api/signals/policy', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ policy }),
+      });
+      if (!res.ok) {
+        const err = (await res.json()) as { error?: string };
+        throw new Error(err.error || 'Nu s-a putut actualiza politica');
+      }
+      const data = (await res.json()) as { policy: StrategyPolicy };
+      setStrategyPolicy(data.policy);
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : 'Eroare la actualizarea politicii');
+    }
+  }, []);
+
   const createAlertRule = useCallback(
     async (payload: {
       type: AlertRule['type'];
@@ -309,6 +340,8 @@ export function useTradingTerminal() {
     candles,
     analysis,
     signals,
+    strategyPolicy,
+    updateStrategyPolicy,
     selectedSignalId,
     setSelectedSignalId,
     alerts,

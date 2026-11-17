@@ -33,6 +33,7 @@ const STATUS_LABELS: Record<TradingSignal['status'], string> = {
   TP2_HIT: 'TP2 Atins',
   TP3_HIT: 'TP3 Atins',
   TP4_HIT: 'TP4 Atins (Full)',
+  REVERSAL_EXIT: 'Ieșire Reversie (+Profit)',
   SL_HIT: 'SL Atins',
   CLOSED: 'Închis Manual',
 };
@@ -838,7 +839,7 @@ export function SignalResolutionPanel({
                 Rezoluție Ținte Atinse: TP1 · TP2 · TP3 · TP4 & Stop-Loss
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Rata de atingere calculată pe cele {overview.resolvedCount} semnale evaluate · {milestones.activePendingCount} active în așteptare · {milestones.manualClosedCount} închise manual
+                Rata de atingere pe cele {overview.resolvedCount} semnale evaluate · {milestones.reversalExitCount} ieșiri profit pe reversie · {milestones.manualClosedCount} închise manual · {milestones.activePendingCount} active
               </p>
             </div>
           </div>
@@ -1314,6 +1315,85 @@ export function SignalResolutionPanel({
               )}
             </tbody>
           </table>
+        </div>
+      </section>
+
+      {/* Row 5: Persisted Engine Lifecycle Audit Log */}
+      <section className="rounded-xl border border-slate-200 dark:border-[#1C2331] bg-white dark:bg-[#0D111A] overflow-hidden">
+        <div className="p-4 border-b border-slate-200 dark:border-[#1C2331] flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="font-display text-sm font-semibold text-slate-900 dark:text-white">
+              Jurnal Audit Evenimente Motor (Salvat Persistent)
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Fiecare semnal nou, prag TP1–TP4, protecție Breakeven, avertizare de trend și ieșire pe profit este salvat pe disc
+            </p>
+          </div>
+          <span className="text-xs font-mono tabular-nums text-slate-500 dark:text-slate-400">
+            Politică activă:{' '}
+            <strong className="text-slate-900 dark:text-white">
+              {report.policy === 'EXIT_PROFIT_ON_REVERSAL'
+                ? 'Ieșire Profit la Reversie'
+                : 'Strict TP4 / SL'}
+            </strong>
+          </span>
+        </div>
+
+        <div className="divide-y divide-slate-100 dark:divide-[#182030] max-h-72 overflow-y-auto">
+          {!report.lifecycleEvents || report.lifecycleEvents.length === 0 ? (
+            <div className="p-6 text-center text-xs text-slate-500 dark:text-slate-400">
+              Evenimentele live de execuție și protecție trend vor apărea aici pe măsură ce motorul evaluează semnalele.
+            </div>
+          ) : (
+            report.lifecycleEvents.map((evt) => (
+              <div
+                key={evt.id}
+                className="px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs hover:bg-slate-50 dark:hover:bg-[#111622]"
+              >
+                <div className="min-w-0 space-y-0.5">
+                  <div className="flex items-center gap-2 font-mono text-[11px] text-slate-500 dark:text-slate-400">
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">
+                      {evt.type.replace(/_/g, ' ')}
+                    </span>
+                    {evt.direction && (
+                      <span
+                        className={
+                          evt.direction === 'BUY'
+                            ? 'text-emerald-600 dark:text-emerald-400 font-bold'
+                            : 'text-rose-600 dark:text-rose-400 font-bold'
+                        }
+                      >
+                        {evt.direction}
+                      </span>
+                    )}
+                    <span>@ {evt.price.toFixed(2)}</span>
+                    {evt.pnlPips !== undefined && (
+                      <span
+                        className={
+                          evt.pnlPips >= 0
+                            ? 'text-emerald-600 dark:text-emerald-400 font-semibold'
+                            : 'text-rose-600 dark:text-rose-400 font-semibold'
+                        }
+                      >
+                        ({evt.pnlPips >= 0 ? '+' : ''}
+                        {evt.pnlPips.toFixed(1)}p)
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-slate-700 dark:text-slate-300">{evt.summary}</div>
+                </div>
+                <span className="font-mono text-[11px] tabular-nums text-slate-400 shrink-0">
+                  {new Date(evt.timestamp).toLocaleString('ro-RO', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                  })}
+                </span>
+              </div>
+            ))
+          )}
         </div>
       </section>
     </div>

@@ -7,9 +7,11 @@ import {
   AlertRule,
   NotificationEvent,
   SecurityAuditSnapshot,
+  StrategyPolicy,
   TradingSignal,
 } from '../types/trading.js';
 import { MarketFeedService } from './marketFeed.js';
+import { TerminalStateStore } from './stateStore.js';
 import { SignalGeneratorEngine } from '../engine/signalGenerator.js';
 
 interface ClientMeta {
@@ -26,48 +28,61 @@ export class NotificationHub {
   private syncInterval: NodeJS.Timeout | null = null;
   private heartbeatInterval: NodeJS.Timeout | null = null;
   private scanCounter = 0;
+  private reversalCounter = 0;
 
   constructor(
     private wss: WebSocketServer,
     private marketFeed: MarketFeedService,
-    private signalEngine: SignalGeneratorEngine
+    private signalEngine: SignalGeneratorEngine,
+    private stateStore?: TerminalStateStore
   ) {}
 
   public initialize(): void {
     const tick = this.marketFeed.getTick();
-    // Pre-populate 2 helpful alert rules
-    this.alertRules = [
-      {
-        id: 'alrt-default-1',
-        type: 'NEW_SIGNAL',
-        timeframe: 'M15',
-        note: 'Notificare automată la generarea oricărui semnal nou XAU/USD (M15/H1)',
-        active: true,
-        triggeredCount: 0,
-        createdAt: Date.now(),
-      },
-      {
-        id: 'alrt-default-2',
-        type: 'PRICE_ABOVE',
-        threshold: Math.round((tick.mid + 12) * 100) / 100,
-        note: 'Alertă breakout rezistență intraday XAU/USD',
-        active: true,
-        triggeredCount: 0,
-        createdAt: Date.now(),
-      },
-    ];
+    const persisted = this.stateStore?.getSnapshot();
 
-    this.notifications = [
-      {
-        id: 'notif-boot',
-        category: 'SYSTEM',
-        severity: 'INFO',
-        title: 'Motor Semnale XAU/USD Inițializat',
-        message: `Conexiune WebSocket securizată activă. Preț curent: ${tick.mid.toFixed(2)} USD.`,
-        price: tick.mid,
-        timestamp: Date.now(),
-      },
-    ];
+    if (persisted && persisted.alerts.length > 0) {
+      this.alertRules = persisted.alerts;
+    } else {
+      // Pre-populate 2 helpful alert rules
+      this.alertRules = [
+        {
+          id: 'alrt-default-1',
+          type: 'NEW_SIGNAL',
+          timeframe: 'M15',
+          note: 'Notificare automată la generarea oricărui semnal nou XAU/USD (M15/H1)',
+          active: true,
+          triggeredCount: 0,
+          createdAt: Date.now(),
+        },
+        {
+          id: 'alrt-default-2',
+          type: 'PRICE_ABOVE',
+          threshold: Math.round((tick.mid + 12) * 100) / 100,
+          note: 'Alertă breakout rezistență intraday XAU/USD',
+          active: true,
+          triggeredCount: 0,
+          createdAt: Date.now(),
+        },
+      ];
+    }
+
+    if (persisted && persisted.notifications.length > 0) {
+      this.notifications = persisted.notifications;
+    } else {
+      this.notifications = [
+        {
+          id: 'notif-boot',
+          category: 'SYSTEM',
+          severity: 'INFO',
+          title: 'Motor Semnale XAU/USD Inițializat',
+          message: `Conexiune WebSocket securizată activă. Preț curent: ${tick.mid.toFixed(2)} USD.`,
+          price: tick.mid,
+          timestamp: Date.now(),
+        },
+      ];
+    }
+    this.persistHubState();
 
     this.wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
       if (this.clients.size >= CONFIG.WS.MAX_CLIENTS) {
@@ -116,6 +131,7 @@ export class NotificationHub {
         payload: {
           tick: this.marketFeed.getTick(),
           signals: this.signalEngine.getSignals(),
+          policy: this.signalEngine.getPolicy(),
           alerts: this.alertRules,
           notifications: this.notifications.slice(0, 25),
           analysis: this.signalEngine.buildTechnicalReport(client.subscribedTimeframe),
@@ -177,7 +193,33 @@ export class NotificationHub {
     // Evaluate custom user alert rules
     this.evaluateAlertRules(tick.mid);
 
+    // Evaluate confirmed trend reversals every ~12 ticks (~18s) BEFORE any new scan
+    this.reversalCounter += 1;
+    if (this.reversalCounter >= 12) {
+      this.reversalCounter = 0;
+      const reversalActions = this.signalEngine.evaluateTrendReversalOnOpenSignals();
+      for (const act of reversalActions) {
+        const isExit = act.type === 'PROFIT_EXIT';
+        const notif = this.recordNotification({
+          category: isExit ? 'SIGNAL_REVERSAL_EXIT' : 'SIGNAL_REVERSAL_WARN',
+          severity: isExit ? 'SUCCESS' : 'WARNING',
+          title: isExit
+            ? `Trend Inversat · Ieșire Profit (${act.signal.direction} ${act.signal.timeframe})`
+            : `Avertisment Schimbare Trend (${act.signal.direction} → ${act.detectedDirection})`,
+          message: act.message,
+          signalId: act.signal.id,
+          direction: act.signal.direction,
+          price: tick.mid,
+        });
+        this.broadcast({
+          type: 'signal:updated',
+          payload: { signal: act.signal, notification: notif },
+        });
+      }
+    }
+
     // Periodic autonomous multi-timeframe signal scan every ~18 ticks (~27s)
+    // Only opens a new signal if no active signal is running (or same-direction slot free)
     this.scanCounter += 1;
     if (this.scanCounter >= 18) {
       this.scanCounter = 0;
@@ -205,6 +247,10 @@ export class NotificationHub {
             status: s.status,
             reachedTargets: s.reachedTargets,
             resolution: s.resolution,
+            closedAt: s.closedAt,
+            exitReason: s.exitReason,
+            exitNote: s.exitNote,
+            trendWarning: s.trendWarning,
           })),
         },
       });
@@ -227,6 +273,25 @@ export class NotificationHub {
       payload: { signal, notification: notif },
     });
 
+    return notif;
+  }
+
+  public notifyPolicyChanged(policy: StrategyPolicy): NotificationEvent {
+    const tick = this.marketFeed.getTick();
+    const notif = this.recordNotification({
+      category: 'SYSTEM',
+      severity: 'INFO',
+      title: 'Politică Management Trend Actualizată',
+      message:
+        policy === 'EXIT_PROFIT_ON_REVERSAL'
+          ? 'Mod activ: Închidere protejată pe profit la reversia confirmată a trendului.'
+          : 'Mod activ: Păstrare strictă până la TP4 / Breakeven / SL fără ieșire anticipată.',
+      price: tick.mid,
+    });
+    this.broadcast({
+      type: 'policy:updated',
+      payload: { policy, notification: notif },
+    });
     return notif;
   }
 
@@ -308,6 +373,7 @@ export class NotificationHub {
       createdAt: Date.now(),
     };
     this.alertRules.unshift(rule);
+    this.persistHubState();
     this.broadcast({ type: 'alerts:sync', payload: this.alertRules });
     return rule;
   }
@@ -316,6 +382,7 @@ export class NotificationHub {
     const rule = this.alertRules.find((r) => r.id === id);
     if (!rule) return null;
     rule.active = !rule.active;
+    this.persistHubState();
     this.broadcast({ type: 'alerts:sync', payload: this.alertRules });
     return rule;
   }
@@ -324,6 +391,7 @@ export class NotificationHub {
     const len = this.alertRules.length;
     this.alertRules = this.alertRules.filter((r) => r.id !== id);
     if (this.alertRules.length !== len) {
+      this.persistHubState();
       this.broadcast({ type: 'alerts:sync', payload: this.alertRules });
       return true;
     }
@@ -361,10 +429,18 @@ export class NotificationHub {
       timestamp: Date.now(),
     };
     this.notifications.unshift(notif);
-    if (this.notifications.length > 50) {
-      this.notifications = this.notifications.slice(0, 50);
+    if (this.notifications.length > 80) {
+      this.notifications = this.notifications.slice(0, 80);
     }
+    this.persistHubState();
     return notif;
+  }
+
+  private persistHubState(): void {
+    this.stateStore?.update({
+      alerts: this.alertRules,
+      notifications: this.notifications,
+    });
   }
 
   private broadcast(data: unknown): void {

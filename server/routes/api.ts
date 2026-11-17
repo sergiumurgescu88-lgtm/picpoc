@@ -9,6 +9,7 @@ import {
   RiskCalcSchema,
   scanRateLimiter,
   ScanRequestSchema,
+  StrategyPolicySchema,
   TimeframeSchema,
   validateBody,
   validateQuery,
@@ -245,12 +246,35 @@ export function createApiRouter(
   router.get('/signals', (_req: Request, res: Response) => {
     res.json({
       signals: signalEngine.getSignals(),
+      policy: signalEngine.getPolicy(),
       notifications: notificationHub.getNotifications().slice(0, 25),
     });
   });
 
   router.get('/signals/resolution', (_req: Request, res: Response) => {
     res.json(signalEngine.getResolutionReport());
+  });
+
+  router.get('/signals/policy', (_req: Request, res: Response) => {
+    res.json({ policy: signalEngine.getPolicy() });
+  });
+
+  router.put(
+    '/signals/policy',
+    validateBody(StrategyPolicySchema),
+    (req: Request, res: Response) => {
+      const body = req.body as z.infer<typeof StrategyPolicySchema>;
+      const updated = signalEngine.setPolicy(body.policy);
+      const notification = notificationHub.notifyPolicyChanged(updated);
+      res.json({ policy: updated, notification });
+    }
+  );
+
+  router.get('/signals/audit', (_req: Request, res: Response) => {
+    res.json({
+      policy: signalEngine.getPolicy(),
+      events: signalEngine.getLifecycleEvents(),
+    });
   });
 
   router.post(
@@ -260,12 +284,17 @@ export function createApiRouter(
     (req: Request, res: Response) => {
       const body = req.body as { timeframe?: Timeframe };
       const tf: Timeframe = body.timeframe ?? 'M15';
-      const generated = signalEngine.evaluateAndGenerateSignal(tf, true);
+      const { signal: generated, blockReason } = signalEngine.evaluateAndGenerateSignalWithReason(
+        tf,
+        true
+      );
 
       if (!generated) {
         res.json({
           created: false,
-          message: 'Există deja suficiente semnale active sau confluența este neutră.',
+          message:
+            blockReason ||
+            'Există deja un semnal activ sau confluența este neutră. Poziția curentă este protejată.',
           analysis: signalEngine.buildTechnicalReport(tf),
         });
         return;

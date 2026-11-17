@@ -1,10 +1,13 @@
 import {
   AlertRule,
   Candle,
+  ExitReason,
   MarketTick,
   NotificationEvent,
+  SignalDirection,
   SignalResolution,
   SignalStatus,
+  StrategyPolicy,
   TargetMilestone,
   TechnicalAnalysisReport,
   Timeframe,
@@ -17,6 +20,7 @@ export type WsIncomingMessage =
       payload: {
         tick: MarketTick;
         signals: TradingSignal[];
+        policy?: StrategyPolicy;
         alerts: AlertRule[];
         notifications: NotificationEvent[];
         analysis: TechnicalAnalysisReport;
@@ -37,6 +41,15 @@ export type WsIncomingMessage =
           status: SignalStatus;
           reachedTargets: TargetMilestone[];
           resolution: SignalResolution;
+          closedAt?: number;
+          exitReason?: ExitReason;
+          exitNote?: string;
+          trendWarning?: {
+            detectedDirection: SignalDirection;
+            confluenceScore: number;
+            message: string;
+            detectedAt: number;
+          } | null;
         }[];
       };
     }
@@ -55,6 +68,13 @@ export type WsIncomingMessage =
       type: 'signal:updated';
       payload: {
         signal: TradingSignal;
+        notification: NotificationEvent;
+      };
+    }
+  | {
+      type: 'policy:updated';
+      payload: {
+        policy: StrategyPolicy;
         notification: NotificationEvent;
       };
     }

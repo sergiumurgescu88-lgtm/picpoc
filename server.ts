@@ -10,6 +10,7 @@ import { createApiRouter } from './server/routes/api.js';
 import { CTraderBrokerService } from './server/services/ctraderService.js';
 import { MarketFeedService } from './server/services/marketFeed.js';
 import { NotificationHub } from './server/services/notificationHub.js';
+import { TerminalStateStore } from './server/services/stateStore.js';
 import { SignalGeneratorEngine } from './server/engine/signalGenerator.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -23,11 +24,12 @@ async function bootstrapServer() {
   app.use(securityHeaders);
   app.use(express.json({ limit: '64kb' }));
 
-  // Initialize modular core services
+  // Initialize durable persistence & modular core services
+  const stateStore = new TerminalStateStore();
   const marketFeed = new MarketFeedService();
   await marketFeed.initialize();
 
-  const signalEngine = new SignalGeneratorEngine(marketFeed);
+  const signalEngine = new SignalGeneratorEngine(marketFeed, stateStore);
   signalEngine.initialize();
 
   const wss = new WebSocketServer({
@@ -36,7 +38,7 @@ async function bootstrapServer() {
     maxPayload: 4096,
   });
 
-  const notificationHub = new NotificationHub(wss, marketFeed, signalEngine);
+  const notificationHub = new NotificationHub(wss, marketFeed, signalEngine, stateStore);
   notificationHub.initialize();
 
   const brokerService = new CTraderBrokerService();
@@ -71,6 +73,7 @@ async function bootstrapServer() {
   const shutdown = () => {
     brokerService.dispose();
     notificationHub.dispose();
+    stateStore.dispose();
     wss.close();
     server.close(() => process.exit(0));
   };
