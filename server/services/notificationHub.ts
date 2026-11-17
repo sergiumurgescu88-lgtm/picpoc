@@ -199,7 +199,7 @@ export class NotificationHub {
 
       // Automatically sync matching Pepperstone Demo position SL to Breakeven once TP1+ is reached
       if (!isSl && (signal.reachedTargets.includes('TP1') || signal.trailingStopStage === 'BREAKEVEN')) {
-        void this.brokerService?.autoSyncTrailingStopForSignal(signal.direction).catch(() => {});
+        void this.brokerService?.autoSyncTrailingStopForSignal(signal.direction, signal.stopLoss).catch(() => {});
       }
 
       const title = isSl
@@ -260,7 +260,7 @@ export class NotificationHub {
         const isExit = act.type === 'PROFIT_EXIT';
         const isBeTightened = act.type === 'BREAKEVEN_TIGHTENED';
         if (isBeTightened) {
-          void this.brokerService?.autoSyncTrailingStopForSignal(act.signal.direction).catch(() => {});
+          void this.brokerService?.autoSyncTrailingStopForSignal(act.signal.direction, act.signal.stopLoss).catch(() => {});
         }
         const notif = this.recordNotification({
           category: isExit

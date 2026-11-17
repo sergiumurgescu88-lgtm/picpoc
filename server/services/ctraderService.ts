@@ -627,7 +627,7 @@ export class CTraderBrokerService {
     return this.amendDemoPositionSlTp(positionId, pos.entryPrice, pos.takeProfit);
   }
 
-  public async autoSyncTrailingStopForSignal(direction: 'BUY' | 'SELL'): Promise<number> {
+  public async autoSyncTrailingStopForSignal(direction: 'BUY' | 'SELL', targetSl?: number): Promise<number> {
     if (
       !this.ws ||
       this.ws.readyState !== WebSocket.OPEN ||
@@ -648,14 +648,16 @@ export class CTraderBrokerService {
         const needsBreakeven = !pos.stopLoss || pos.stopLoss < pos.entryPrice - 0.02;
         const canPlaceBe = bid !== null && bid !== undefined && bid > pos.entryPrice + 0.25;
         if (needsBreakeven && canPlaceBe) {
-          await this.amendDemoPositionSlTp(pos.positionId, pos.entryPrice, pos.takeProfit);
+          const sl = targetSl ?? pos.entryPrice;
+          await this.amendDemoPositionSlTp(pos.positionId, sl, pos.takeProfit);
           amendedCount += 1;
         }
       } else {
         const needsBreakeven = !pos.stopLoss || pos.stopLoss > pos.entryPrice + 0.02;
         const canPlaceBe = ask !== null && ask !== undefined && ask < pos.entryPrice - 0.25;
         if (needsBreakeven && canPlaceBe) {
-          await this.amendDemoPositionSlTp(pos.positionId, pos.entryPrice, pos.takeProfit);
+          const sl = targetSl ?? pos.entryPrice;
+          await this.amendDemoPositionSlTp(pos.positionId, sl, pos.takeProfit);
           amendedCount += 1;
         }
       }

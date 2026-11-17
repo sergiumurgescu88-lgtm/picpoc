@@ -1136,10 +1136,10 @@ export class SignalGeneratorEngine {
             sig.currentPrice = round2(sig.stopLoss);
             sig.pnlPips = round2(lockedDiff * 10);
             sig.rMultiple = round2(lockedDiff / riskDist);
-            sig.resolution = 'WON';
+            sig.resolution = sig.pnlPips > 0.5 ? 'WON' : 'BREAKEVEN';
             sig.closedAt = Date.now();
             sig.exitReason = 'BREAKEVEN_LOCK';
-            const isExactBe = Math.abs(sig.stopLoss - sig.entry) < 0.05;
+            const isExactBe = Math.abs(sig.stopLoss - sig.entry) < 0.04;
             sig.exitNote = isExactBe
               ? `Trailing Stop Breakeven executat la ${sig.stopLoss.toFixed(2)} la inversarea trendului după TP1 — capital 100% protejat (+${sig.pnlPips.toFixed(1)} pips / +${sig.rMultiple.toFixed(2)}R din marcarea parțială TP1, 0 pierdere pe restul poziției).`
               : `Trailing Stop pe profit executat la ${sig.stopLoss.toFixed(2)} după ${sig.status.replace('_', ' ')} — capital protejat (+${sig.pnlPips.toFixed(1)} pips / +${sig.rMultiple.toFixed(2)}R securizați).`;
@@ -1210,10 +1210,10 @@ export class SignalGeneratorEngine {
             sig.currentPrice = round2(sig.stopLoss);
             sig.pnlPips = round2(lockedDiff * 10);
             sig.rMultiple = round2(lockedDiff / riskDist);
-            sig.resolution = 'WON';
+            sig.resolution = sig.pnlPips > 0.5 ? 'WON' : 'BREAKEVEN';
             sig.closedAt = Date.now();
             sig.exitReason = 'BREAKEVEN_LOCK';
-            const isExactBe = Math.abs(sig.stopLoss - sig.entry) < 0.05;
+            const isExactBe = Math.abs(sig.stopLoss - sig.entry) < 0.04;
             sig.exitNote = isExactBe
               ? `Trailing Stop Breakeven executat la ${sig.stopLoss.toFixed(2)} la inversarea trendului după TP1 — capital 100% protejat (+${sig.pnlPips.toFixed(1)} pips / +${sig.rMultiple.toFixed(2)}R din marcarea parțială TP1, 0 pierdere pe restul poziției).`
               : `Trailing Stop pe profit executat la ${sig.stopLoss.toFixed(2)} după ${sig.status.replace('_', ' ')} — capital protejat (+${sig.pnlPips.toFixed(1)} pips / +${sig.rMultiple.toFixed(2)}R securizați).`;

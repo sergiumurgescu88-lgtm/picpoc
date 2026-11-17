@@ -11,7 +11,7 @@ export type SignalStatus =
   | 'SL_HIT'
   | 'CLOSED';
 export type TargetMilestone = 'TP1' | 'TP2' | 'TP3' | 'TP4' | 'SL';
-export type SignalResolution = 'WON' | 'LOST' | 'ACTIVE';
+export type SignalResolution = 'WON' | 'LOST' | 'ACTIVE' | 'BREAKEVEN';
 export type StrategyPolicy = 'EXIT_PROFIT_ON_REVERSAL' | 'LOCK_UNTIL_RESOLUTION';
 export type ExitReason =
   | 'TP4_FULL'
