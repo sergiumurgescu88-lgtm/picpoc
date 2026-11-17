@@ -255,7 +255,7 @@ export function SignalCardList({
                   </div>
                 </div>
 
-                {/* Row 2: Entry / SL / TP1 / TP2 / TP3 / TP4 Grid */}
+                {/* Row 2: Entry / SL (with trailed BE indicator) / TP1 / TP2 / TP3 / TP4 Grid */}
                 <div className="mt-3 grid grid-cols-3 sm:grid-cols-6 gap-2 py-2 border-y border-slate-100 dark:border-[#182030] text-[11px] font-mono tabular-nums">
                   <div>
                     <div className="text-slate-400 dark:text-slate-500">Entry</div>
@@ -265,44 +265,58 @@ export function SignalCardList({
                   </div>
                   <div>
                     <div className="text-slate-400 dark:text-slate-500">
-                      SL{sig.reachedTargets.includes('SL') ? ' ✗' : ''}
+                      SL
+                      {sig.reachedTargets.includes('SL')
+                        ? ' ✗'
+                        : sig.reachedTargets.includes('TP2')
+                          ? ' · Blocat'
+                          : sig.reachedTargets.includes('TP1')
+                            ? ' · BE'
+                            : ''}
                     </div>
-                    <div className="font-semibold text-rose-600 dark:text-rose-400">
+                    <div
+                      className={`font-semibold ${
+                        sig.reachedTargets.includes('TP1') && !sig.reachedTargets.includes('SL')
+                          ? 'text-amber-600 dark:text-amber-400'
+                          : 'text-rose-600 dark:text-rose-400'
+                      }`}
+                    >
                       {sig.stopLoss.toFixed(2)}
                     </div>
                   </div>
-                  <div>
-                    <div className="text-slate-400 dark:text-slate-500">
-                      TP1{sig.reachedTargets.includes('TP1') ? ' ✓' : ''}
-                    </div>
-                    <div className="font-semibold text-emerald-600 dark:text-emerald-400">
-                      {sig.tp1.toFixed(2)}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-slate-400 dark:text-slate-500">
-                      TP2{sig.reachedTargets.includes('TP2') ? ' ✓' : ''}
-                    </div>
-                    <div className="font-semibold text-emerald-600 dark:text-emerald-400">
-                      {sig.tp2.toFixed(2)}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-slate-400 dark:text-slate-500">
-                      TP3{sig.reachedTargets.includes('TP3') ? ' ✓' : ''}
-                    </div>
-                    <div className="font-semibold text-emerald-600 dark:text-emerald-400">
-                      {sig.tp3.toFixed(2)}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-slate-400 dark:text-slate-500">
-                      TP4{sig.reachedTargets.includes('TP4') ? ' ✓' : ''}
-                    </div>
-                    <div className="font-semibold text-emerald-600 dark:text-emerald-400">
-                      {sig.tp4.toFixed(2)}
-                    </div>
-                  </div>
+                  {(
+                    [
+                      { key: 'TP1', val: sig.tp1 },
+                      { key: 'TP2', val: sig.tp2 },
+                      { key: 'TP3', val: sig.tp3 },
+                      { key: 'TP4', val: sig.tp4 },
+                    ] as const
+                  ).map((item) => {
+                    const hit = sig.reachedTargets.includes(item.key);
+                    return (
+                      <div key={item.key}>
+                        <div
+                          className={
+                            hit
+                              ? 'font-bold text-emerald-600 dark:text-emerald-400'
+                              : 'text-slate-400 dark:text-slate-500'
+                          }
+                        >
+                          {item.key}
+                          {hit ? ' ✓' : ''}
+                        </div>
+                        <div
+                          className={
+                            hit
+                              ? 'font-bold text-emerald-600 dark:text-emerald-400 underline decoration-emerald-500/50 underline-offset-2'
+                              : 'font-semibold text-emerald-600/80 dark:text-emerald-400/80'
+                          }
+                        >
+                          {item.val.toFixed(2)}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
 
                 {/* Row 3: Detailed Rationale when selected */}

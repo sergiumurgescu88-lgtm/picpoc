@@ -158,30 +158,61 @@ export class NotificationHub {
       this.processMarketStep();
     }, CONFIG.WS.TICK_BROADCAST_MS);
 
-    // Periodic external live feed synchronization
+    // Periodic external live feed synchronization + immediate post-sync TP/SL candle reconciliation
     this.syncInterval = setInterval(() => {
-      void this.marketFeed.syncExternalMarketData();
+      void this.syncAndReconcileExternalData();
     }, CONFIG.WS.CANDLE_POLL_MS);
   }
 
-  private processMarketStep(): void {
-    const { tick, updatedCandles } = this.marketFeed.stepRealTimeTick();
+  private async syncAndReconcileExternalData(): Promise<void> {
+    const synced = await this.marketFeed.syncExternalMarketData();
+    if (!synced) return;
 
-    // Update active signals & check TP/SL transitions
-    const { updatedSignals, transitions } = this.signalEngine.updateSignalsOnTick(tick.mid);
+    const tick = this.marketFeed.getTick();
+    const { transitions } = this.signalEngine.updateSignalsOnTick(tick.mid);
+    this.emitSignalTransitions(transitions, tick.mid);
 
+    for (const client of this.clients) {
+      this.sendToClient(client.ws, {
+        type: 'candles:sync',
+        payload: {
+          timeframe: client.subscribedTimeframe,
+          candles: this.marketFeed.getCandles(client.subscribedTimeframe),
+          tick,
+        },
+      });
+    }
+  }
+
+  private emitSignalTransitions(
+    transitions: { signal: TradingSignal; previousStatus: string }[],
+    refPrice: number
+  ): void {
     for (const { signal } of transitions) {
       const isSl = signal.status === 'SL_HIT';
+      const isBeClose = Boolean(signal.closedAt) && signal.exitReason === 'BREAKEVEN_LOCK';
+      const isTp4Full = signal.status === 'TP4_HIT';
+
+      const title = isSl
+        ? `Stop Loss Atins (${signal.direction} ${signal.timeframe})`
+        : isBeClose
+          ? `Profit Blocat · Poziție Închisă (${signal.direction} ${signal.timeframe})`
+          : isTp4Full
+            ? `TP4 Final Atins · Tranzacție Închisă (${signal.direction} ${signal.timeframe})`
+            : `${signal.status.replace('_', ' ')} Atins · SL Mutat la ${signal.status === 'TP1_HIT' ? 'Breakeven' : signal.stopLoss.toFixed(2)}`;
+
+      const message =
+        signal.exitNote ||
+        `${signal.symbol} @ ${refPrice.toFixed(2)} · SL activ: ${signal.stopLoss.toFixed(2)} · Profit curent: ${signal.pnlPips >= 0 ? '+' : ''}${signal.pnlPips.toFixed(1)} pips (${signal.rMultiple >= 0 ? '+' : ''}${signal.rMultiple.toFixed(2)}R)`;
+
       const notif = this.recordNotification({
         category: isSl ? 'SIGNAL_SL' : 'SIGNAL_TP',
         severity: isSl ? 'CRITICAL' : 'SUCCESS',
-        title: isSl
-          ? `Stop Loss Atins (${signal.direction} ${signal.timeframe})`
-          : `${signal.status.replace('_', ' ')} Atins (${signal.direction} ${signal.timeframe})`,
-        message: `${signal.symbol} @ ${tick.mid.toFixed(2)} · Rezultat: ${signal.pnlPips >= 0 ? '+' : ''}${signal.pnlPips.toFixed(1)} pips (${signal.rMultiple >= 0 ? '+' : ''}${signal.rMultiple.toFixed(2)}R)`,
+        title,
+        message,
         signalId: signal.id,
         direction: signal.direction,
-        price: tick.mid,
+        price: signal.currentPrice || refPrice,
       });
 
       this.broadcast({
@@ -189,6 +220,14 @@ export class NotificationHub {
         payload: { signal, notification: notif },
       });
     }
+  }
+
+  private processMarketStep(): void {
+    const { tick, updatedCandles } = this.marketFeed.stepRealTimeTick();
+
+    // Update active signals & check TP/SL transitions (including candle wicks & trailing SL)
+    const { updatedSignals, transitions } = this.signalEngine.updateSignalsOnTick(tick.mid);
+    this.emitSignalTransitions(transitions, tick.mid);
 
     // Evaluate custom user alert rules
     this.evaluateAlertRules(tick.mid);
@@ -230,7 +269,7 @@ export class NotificationHub {
       }
     }
 
-    // Broadcast tick & incremental candle + active signal P&L updates
+    // Broadcast tick & incremental candle + active signal P&L / trailed SL updates
     for (const client of this.clients) {
       const candle = updatedCandles[client.subscribedTimeframe];
       this.sendToClient(client.ws, {
@@ -241,6 +280,8 @@ export class NotificationHub {
           timeframe: client.subscribedTimeframe,
           activeUpdates: updatedSignals.map((s) => ({
             id: s.id,
+            stopLoss: s.stopLoss,
+            initialStopLoss: s.initialStopLoss,
             currentPrice: s.currentPrice,
             pnlPips: s.pnlPips,
             rMultiple: s.rMultiple,

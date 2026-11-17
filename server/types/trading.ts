@@ -178,6 +178,7 @@ export interface TradingSignal {
   session: TradingSession;
   entry: number;
   stopLoss: number;
+  initialStopLoss?: number;
   tp1: number;
   tp2: number;
   tp3: number;
@@ -203,6 +204,9 @@ export interface TradingSignal {
   closedAt?: number;
   exitReason?: ExitReason;
   exitNote?: string;
+  entryBarTime?: number;
+  entryBarInitialHigh?: number;
+  entryBarInitialLow?: number;
   trendWarning?: {
     detectedDirection: SignalDirection;
     confluenceScore: number;

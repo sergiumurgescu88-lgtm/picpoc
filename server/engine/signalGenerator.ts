@@ -75,7 +75,8 @@ export class SignalGeneratorEngine {
       if (persisted.signals.length > 0) {
         this.signals = persisted.signals;
         this.signals.sort((a, b) => b.createdAt - a.createdAt);
-        // Ensure at least one initial live signal exists only if no open signal exists AND no recent signal in last 10m
+        // Reconcile open signals against any candles formed since entry before checking open slots
+        this.updateSignalsOnTick(this.marketFeed.getTick().mid);
         const hasOpen = this.signals.some(SignalGeneratorEngine.isSignalOpen);
         if (!hasOpen) {
           this.evaluateAndGenerateSignal('M15', true);
@@ -318,6 +319,7 @@ export class SignalGeneratorEngine {
             session,
             entry,
             stopLoss,
+            initialStopLoss: stopLoss,
             tp1,
             tp2,
             tp3,
@@ -579,6 +581,9 @@ export class SignalGeneratorEngine {
           ? `CHoCH Schimbare Structură ${timeframe}`
           : `Confluență Multi-Timeframe ${timeframe}`;
 
+    const m5Candles = this.marketFeed.getCandles('M5');
+    const latestM5 = m5Candles[m5Candles.length - 1];
+
     const signal: TradingSignal = {
       id: `sig-${crypto.randomBytes(4).toString('hex')}`,
       symbol: CONFIG.SYMBOL,
@@ -588,6 +593,7 @@ export class SignalGeneratorEngine {
       session: detectTradingSession(),
       entry,
       stopLoss,
+      initialStopLoss: stopLoss,
       tp1,
       tp2,
       tp3,
@@ -613,6 +619,9 @@ export class SignalGeneratorEngine {
       },
       createdAt: Date.now(),
       updatedAt: Date.now(),
+      entryBarTime: latestM5?.time,
+      entryBarInitialHigh: latestM5 ? Math.max(latestM5.high, entry) : entry,
+      entryBarInitialLow: latestM5 ? Math.min(latestM5.low, entry) : entry,
       trendWarning: null,
     };
 
@@ -679,7 +688,8 @@ export class SignalGeneratorEngine {
       const inProfit = sig.pnlPips > 0.5 || sig.reachedTargets.includes('TP1');
 
       if (this.policy === 'EXIT_PROFIT_ON_REVERSAL' && inProfit) {
-        const riskDist = Math.max(0.5, Math.abs(sig.entry - sig.stopLoss));
+        const baseSl = sig.initialStopLoss ?? sig.stopLoss;
+        const riskDist = Math.max(0.5, Math.abs(sig.entry - baseSl));
         const lockedFloor = sig.reachedTargets.includes('TP3')
           ? Math.abs(sig.tp3 - sig.entry)
           : sig.reachedTargets.includes('TP2')
@@ -772,8 +782,8 @@ export class SignalGeneratorEngine {
   }
 
   /**
-   * Evaluates every open signal against the latest live tick.
-   * Tracks progressive milestones (TP1 -> TP2 -> TP3 -> TP4) and Stop-Loss / Breakeven protection.
+   * Evaluates every open signal against live tick bid/ask/mid AND post-entry candle wicks (high/low).
+   * Dynamically trails Stop-Loss on every milestone (TP1 -> BE, TP2 -> TP1, TP3 -> TP2) and closes 100% at TP4.
    */
   public updateSignalsOnTick(price: number): {
     updatedSignals: TradingSignal[];
@@ -781,128 +791,233 @@ export class SignalGeneratorEngine {
   } {
     const updatedSignals: TradingSignal[] = [];
     const transitions: { signal: TradingSignal; previousStatus: string }[] = [];
+    const tick = this.marketFeed.getTick();
+    const m5Candles = this.marketFeed.getCandles('M5');
 
     for (const sig of this.signals) {
       if (!SignalGeneratorEngine.isSignalOpen(sig)) {
         continue;
       }
 
+      if (!sig.initialStopLoss) {
+        sig.initialStopLoss = sig.stopLoss;
+      }
+
+      // Backfill entryBar metadata for older persisted signals
+      if (sig.entryBarTime === undefined && m5Candles.length > 0) {
+        const createdSec = Math.floor(sig.createdAt / 1000);
+        const matchingBar =
+          [...m5Candles].reverse().find((b) => b.time <= createdSec) ??
+          m5Candles[m5Candles.length - 1];
+        sig.entryBarTime = matchingBar.time;
+        sig.entryBarInitialHigh = Math.max(matchingBar.high, sig.entry);
+        sig.entryBarInitialLow = Math.min(matchingBar.low, sig.entry);
+      }
+
+      // Compute authoritative post-entry price range [observedLow, observedHigh]
+      let observedHigh = Math.max(price, tick.ask, tick.mid);
+      let observedLow = Math.min(price, tick.bid, tick.mid);
+
+      const tfCandles = this.marketFeed.getCandles(sig.timeframe);
+      const entrySec = sig.entryBarTime ?? Math.floor(sig.createdAt / 1000);
+
+      for (const bar of m5Candles) {
+        if (bar.time > entrySec) {
+          if (bar.high > observedHigh) observedHigh = bar.high;
+          if (bar.low < observedLow) observedLow = bar.low;
+        } else if (bar.time === sig.entryBarTime) {
+          if (sig.entryBarInitialHigh !== undefined && bar.high > sig.entryBarInitialHigh) {
+            observedHigh = Math.max(observedHigh, bar.high);
+            sig.entryBarInitialHigh = bar.high;
+          }
+          if (sig.entryBarInitialLow !== undefined && bar.low < sig.entryBarInitialLow) {
+            observedLow = Math.min(observedLow, bar.low);
+            sig.entryBarInitialLow = bar.low;
+          }
+        }
+      }
+
+      // Also check active subscribed timeframe bars strictly opened after signal creation
+      const strictPostCreateSec = Math.ceil(sig.createdAt / 1000);
+      for (const bar of tfCandles) {
+        if (bar.time >= strictPostCreateSec) {
+          if (bar.high > observedHigh) observedHigh = bar.high;
+          if (bar.low < observedLow) observedLow = bar.low;
+        }
+      }
+
       const prevStatus = sig.status;
       const prevClosed = Boolean(sig.closedAt);
+      const prevSl = sig.stopLoss;
+      const hadTp1BeforeTick = sig.reachedTargets.includes('TP1');
+
+      const baseSl = sig.initialStopLoss ?? sig.stopLoss;
+      const riskDist = Math.max(0.5, Math.abs(sig.entry - baseSl));
+
       sig.currentPrice = round2(price);
       const diff = sig.direction === 'BUY' ? price - sig.entry : sig.entry - price;
-      const riskDist = Math.max(0.5, Math.abs(sig.entry - sig.stopLoss));
       sig.pnlPips = round2(diff * 10);
       sig.rMultiple = round2(diff / riskDist);
       sig.updatedAt = Date.now();
 
-      const hasTp1 = sig.reachedTargets.includes('TP1');
-
       if (sig.direction === 'BUY') {
-        if (!hasTp1 && price <= sig.stopLoss) {
-          sig.reachedTargets.push('SL');
-          sig.status = 'SL_HIT';
-          sig.resolution = 'LOST';
-          sig.pnlPips = -round2(riskDist * 10);
-          sig.rMultiple = -1;
-          sig.closedAt = Date.now();
-          sig.exitReason = 'SL_HIT';
-          sig.exitNote = `Stop Loss atins la ${sig.stopLoss.toFixed(2)}.`;
-        } else if (hasTp1 && price <= sig.entry) {
-          // Breakeven lock after TP1+
-          const lockedPrice = sig.reachedTargets.includes('TP3')
-            ? sig.tp3
-            : sig.reachedTargets.includes('TP2')
-              ? sig.tp2
-              : sig.tp1;
-          const lockedDiff = lockedPrice - sig.entry;
-          sig.pnlPips = round2(lockedDiff * 10);
-          sig.rMultiple = round2(lockedDiff / riskDist);
+        // 1. Check upward TP1 -> TP4 milestones against post-entry high wick / tick
+        if (!sig.reachedTargets.includes('TP1') && observedHigh >= sig.tp1) {
+          sig.reachedTargets.push('TP1');
+          sig.status = 'TP1_HIT';
           sig.resolution = 'WON';
+        }
+        if (!sig.reachedTargets.includes('TP2') && observedHigh >= sig.tp2) {
+          sig.reachedTargets.push('TP2');
+          sig.status = 'TP2_HIT';
+          sig.resolution = 'WON';
+        }
+        if (!sig.reachedTargets.includes('TP3') && observedHigh >= sig.tp3) {
+          sig.reachedTargets.push('TP3');
+          sig.status = 'TP3_HIT';
+          sig.resolution = 'WON';
+        }
+        if (!sig.reachedTargets.includes('TP4') && observedHigh >= sig.tp4) {
+          sig.reachedTargets.push('TP4');
+          sig.status = 'TP4_HIT';
+          sig.resolution = 'WON';
+          sig.stopLoss = sig.tp3;
+          const tp4Diff = sig.tp4 - sig.entry;
+          sig.currentPrice = sig.tp4;
+          sig.pnlPips = round2(tp4Diff * 10);
+          sig.rMultiple = round2(tp4Diff / riskDist);
           sig.closedAt = Date.now();
-          sig.exitReason = 'BREAKEVEN_LOCK';
-          sig.exitNote = `Protecție Breakeven activată după ${sig.status.replace('_', ' ')} (+${sig.pnlPips.toFixed(1)} pips blocați).`;
-        } else {
-          if (!sig.reachedTargets.includes('TP1') && price >= sig.tp1) {
-            sig.reachedTargets.push('TP1');
-            sig.status = 'TP1_HIT';
-            sig.resolution = 'WON';
+          sig.exitReason = 'TP4_FULL';
+          sig.exitNote = `Ținta finală TP4 (${sig.tp4.toFixed(2)}) atinsă complet (+${sig.pnlPips.toFixed(1)} pips / +${sig.rMultiple.toFixed(2)}R).`;
+        }
+
+        // Enforce progressive trailing Stop-Loss invariant (TP1 -> BE, TP2 -> TP1, TP3 -> TP2)
+        if (!sig.closedAt) {
+          if (sig.reachedTargets.includes('TP3') && sig.stopLoss < sig.tp2) {
+            sig.stopLoss = sig.tp2;
+          } else if (sig.reachedTargets.includes('TP2') && sig.stopLoss < sig.tp1) {
+            sig.stopLoss = sig.tp1;
+          } else if (sig.reachedTargets.includes('TP1') && sig.stopLoss < sig.entry) {
+            sig.stopLoss = sig.entry;
           }
-          if (!sig.reachedTargets.includes('TP2') && price >= sig.tp2) {
-            sig.reachedTargets.push('TP2');
-            sig.status = 'TP2_HIT';
-            sig.resolution = 'WON';
-          }
-          if (!sig.reachedTargets.includes('TP3') && price >= sig.tp3) {
-            sig.reachedTargets.push('TP3');
-            sig.status = 'TP3_HIT';
-            sig.resolution = 'WON';
-          }
-          if (!sig.reachedTargets.includes('TP4') && price >= sig.tp4) {
-            sig.reachedTargets.push('TP4');
-            sig.status = 'TP4_HIT';
+        }
+
+        // 2. Check Stop-Loss or Trailed Profit Lock
+        if (!sig.closedAt) {
+          if (!sig.reachedTargets.includes('TP1') && observedLow <= sig.stopLoss) {
+            sig.reachedTargets.push('SL');
+            sig.status = 'SL_HIT';
+            sig.resolution = 'LOST';
+            sig.currentPrice = sig.stopLoss;
+            sig.pnlPips = -round2(riskDist * 10);
+            sig.rMultiple = -1;
+            sig.closedAt = Date.now();
+            sig.exitReason = 'SL_HIT';
+            sig.exitNote = `Stop Loss atins la ${sig.stopLoss.toFixed(2)}.`;
+          } else if (hadTp1BeforeTick && Math.min(price, tick.bid) <= sig.stopLoss) {
+            // Price pulled back to the trailed Stop-Loss (Breakeven after TP1, TP1 after TP2, TP2 after TP3)
+            const highestMilestonePrice = sig.reachedTargets.includes('TP3')
+              ? sig.tp3
+              : sig.reachedTargets.includes('TP2')
+                ? sig.tp2
+                : sig.tp1;
+            const lockedDiff = highestMilestonePrice - sig.entry;
+            sig.currentPrice = round2(sig.stopLoss);
+            sig.pnlPips = round2(lockedDiff * 10);
+            sig.rMultiple = round2(lockedDiff / riskDist);
             sig.resolution = 'WON';
             sig.closedAt = Date.now();
-            sig.exitReason = 'TP4_FULL';
-            sig.exitNote = `Ținta finală TP4 (${sig.tp4.toFixed(2)}) atinsă complet.`;
+            sig.exitReason = 'BREAKEVEN_LOCK';
+            sig.exitNote = `Protecție Trailing/Breakeven executată la ${sig.stopLoss.toFixed(2)} după ${sig.status.replace('_', ' ')} (+${sig.pnlPips.toFixed(1)} pips / +${sig.rMultiple.toFixed(2)}R securizați).`;
           }
         }
       } else {
-        if (!hasTp1 && price >= sig.stopLoss) {
-          sig.reachedTargets.push('SL');
-          sig.status = 'SL_HIT';
-          sig.resolution = 'LOST';
-          sig.pnlPips = -round2(riskDist * 10);
-          sig.rMultiple = -1;
-          sig.closedAt = Date.now();
-          sig.exitReason = 'SL_HIT';
-          sig.exitNote = `Stop Loss atins la ${sig.stopLoss.toFixed(2)}.`;
-        } else if (hasTp1 && price >= sig.entry) {
-          const lockedPrice = sig.reachedTargets.includes('TP3')
-            ? sig.tp3
-            : sig.reachedTargets.includes('TP2')
-              ? sig.tp2
-              : sig.tp1;
-          const lockedDiff = sig.entry - lockedPrice;
-          sig.pnlPips = round2(lockedDiff * 10);
-          sig.rMultiple = round2(lockedDiff / riskDist);
+        // SELL direction
+        if (!sig.reachedTargets.includes('TP1') && observedLow <= sig.tp1) {
+          sig.reachedTargets.push('TP1');
+          sig.status = 'TP1_HIT';
           sig.resolution = 'WON';
+        }
+        if (!sig.reachedTargets.includes('TP2') && observedLow <= sig.tp2) {
+          sig.reachedTargets.push('TP2');
+          sig.status = 'TP2_HIT';
+          sig.resolution = 'WON';
+        }
+        if (!sig.reachedTargets.includes('TP3') && observedLow <= sig.tp3) {
+          sig.reachedTargets.push('TP3');
+          sig.status = 'TP3_HIT';
+          sig.resolution = 'WON';
+        }
+        if (!sig.reachedTargets.includes('TP4') && observedLow <= sig.tp4) {
+          sig.reachedTargets.push('TP4');
+          sig.status = 'TP4_HIT';
+          sig.resolution = 'WON';
+          sig.stopLoss = sig.tp3;
+          const tp4Diff = sig.entry - sig.tp4;
+          sig.currentPrice = sig.tp4;
+          sig.pnlPips = round2(tp4Diff * 10);
+          sig.rMultiple = round2(tp4Diff / riskDist);
           sig.closedAt = Date.now();
-          sig.exitReason = 'BREAKEVEN_LOCK';
-          sig.exitNote = `Protecție Breakeven activată după ${sig.status.replace('_', ' ')} (+${sig.pnlPips.toFixed(1)} pips blocați).`;
-        } else {
-          if (!sig.reachedTargets.includes('TP1') && price <= sig.tp1) {
-            sig.reachedTargets.push('TP1');
-            sig.status = 'TP1_HIT';
-            sig.resolution = 'WON';
+          sig.exitReason = 'TP4_FULL';
+          sig.exitNote = `Ținta finală TP4 (${sig.tp4.toFixed(2)}) atinsă complet (+${sig.pnlPips.toFixed(1)} pips / +${sig.rMultiple.toFixed(2)}R).`;
+        }
+
+        // Enforce progressive trailing Stop-Loss invariant (TP1 -> BE, TP2 -> TP1, TP3 -> TP2)
+        if (!sig.closedAt) {
+          if (sig.reachedTargets.includes('TP3') && sig.stopLoss > sig.tp2) {
+            sig.stopLoss = sig.tp2;
+          } else if (sig.reachedTargets.includes('TP2') && sig.stopLoss > sig.tp1) {
+            sig.stopLoss = sig.tp1;
+          } else if (sig.reachedTargets.includes('TP1') && sig.stopLoss > sig.entry) {
+            sig.stopLoss = sig.entry;
           }
-          if (!sig.reachedTargets.includes('TP2') && price <= sig.tp2) {
-            sig.reachedTargets.push('TP2');
-            sig.status = 'TP2_HIT';
-            sig.resolution = 'WON';
-          }
-          if (!sig.reachedTargets.includes('TP3') && price <= sig.tp3) {
-            sig.reachedTargets.push('TP3');
-            sig.status = 'TP3_HIT';
-            sig.resolution = 'WON';
-          }
-          if (!sig.reachedTargets.includes('TP4') && price <= sig.tp4) {
-            sig.reachedTargets.push('TP4');
-            sig.status = 'TP4_HIT';
+        }
+
+        if (!sig.closedAt) {
+          if (!sig.reachedTargets.includes('TP1') && observedHigh >= sig.stopLoss) {
+            sig.reachedTargets.push('SL');
+            sig.status = 'SL_HIT';
+            sig.resolution = 'LOST';
+            sig.currentPrice = sig.stopLoss;
+            sig.pnlPips = -round2(riskDist * 10);
+            sig.rMultiple = -1;
+            sig.closedAt = Date.now();
+            sig.exitReason = 'SL_HIT';
+            sig.exitNote = `Stop Loss atins la ${sig.stopLoss.toFixed(2)}.`;
+          } else if (hadTp1BeforeTick && Math.max(price, tick.ask) >= sig.stopLoss) {
+            const highestMilestonePrice = sig.reachedTargets.includes('TP3')
+              ? sig.tp3
+              : sig.reachedTargets.includes('TP2')
+                ? sig.tp2
+                : sig.tp1;
+            const lockedDiff = sig.entry - highestMilestonePrice;
+            sig.currentPrice = round2(sig.stopLoss);
+            sig.pnlPips = round2(lockedDiff * 10);
+            sig.rMultiple = round2(lockedDiff / riskDist);
             sig.resolution = 'WON';
             sig.closedAt = Date.now();
-            sig.exitReason = 'TP4_FULL';
-            sig.exitNote = `Ținta finală TP4 (${sig.tp4.toFixed(2)}) atinsă complet.`;
+            sig.exitReason = 'BREAKEVEN_LOCK';
+            sig.exitNote = `Protecție Trailing/Breakeven executată la ${sig.stopLoss.toFixed(2)} după ${sig.status.replace('_', ' ')} (+${sig.pnlPips.toFixed(1)} pips / +${sig.rMultiple.toFixed(2)}R securizați).`;
           }
         }
       }
 
       updatedSignals.push(sig);
       const statusChanged = sig.status !== prevStatus;
+      const slTrailed = sig.stopLoss !== prevSl;
       const breakevenClosed = !prevClosed && Boolean(sig.closedAt) && sig.exitReason === 'BREAKEVEN_LOCK';
 
-      if (statusChanged || breakevenClosed) {
+      if (statusChanged || breakevenClosed || slTrailed) {
         transitions.push({ signal: sig, previousStatus: prevStatus });
+        const trailLabel =
+          sig.status === 'TP1_HIT'
+            ? ` · SL mutat automat la Breakeven (${sig.stopLoss.toFixed(2)})`
+            : sig.status === 'TP2_HIT'
+              ? ` · SL mutat la TP1 (${sig.stopLoss.toFixed(2)})`
+              : sig.status === 'TP3_HIT'
+                ? ` · SL mutat la TP2 (${sig.stopLoss.toFixed(2)})`
+                : '';
+
         this.recordAuditEvent({
           type:
             sig.status === 'SL_HIT'
@@ -917,7 +1032,7 @@ export class SignalGeneratorEngine {
           rMultiple: sig.rMultiple,
           summary:
             sig.exitNote ||
-            `${sig.status.replace('_', ' ')} atins (${sig.direction} ${sig.timeframe}) @ ${sig.currentPrice.toFixed(2)} (${sig.pnlPips >= 0 ? '+' : ''}${sig.pnlPips.toFixed(1)}p).`,
+            `${sig.status.replace('_', ' ')} atins (${sig.direction} ${sig.timeframe}) @ ${sig.currentPrice.toFixed(2)}${trailLabel} (${sig.pnlPips >= 0 ? '+' : ''}${sig.pnlPips.toFixed(1)}p).`,
         });
       }
     }

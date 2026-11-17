@@ -218,7 +218,7 @@ export function ChartPanel({
     }
   }, [candles, analysis, showEma, showBollinger]);
 
-  // Draw Entry / SL / TP1 / TP2 / TP3 price lines for the selected signal
+  // Draw Entry / SL (including trailed BE/TP lock) / TP1 / TP2 / TP3 / TP4 price lines
   useEffect(() => {
     const series = candleSeriesRef.current;
     if (!series) return;
@@ -234,42 +234,66 @@ export function ChartPanel({
 
     if (!selectedSignal) return;
 
+    const hitTp1 = selectedSignal.reachedTargets.includes('TP1');
+    const hitTp2 = selectedSignal.reachedTargets.includes('TP2');
+    const hitTp3 = selectedSignal.reachedTargets.includes('TP3');
+    const hitTp4 = selectedSignal.reachedTargets.includes('TP4');
+    const hitSl = selectedSignal.reachedTargets.includes('SL') || selectedSignal.status === 'SL_HIT';
+
+    const slTitle = hitSl
+      ? '✗ SL ATINS'
+      : hitTp3
+        ? 'SL BLOCAT @ TP2'
+        : hitTp2
+          ? 'SL BLOCAT @ TP1'
+          : hitTp1
+            ? 'SL BREAKEVEN (0R)'
+            : 'SL';
+
+    const slColor = hitTp1 && !hitSl ? '#F59E0B' : '#EF4444';
+
     const linesConfig = [
       {
         price: selectedSignal.entry,
         color: '#F59E0B',
+        lineWidth: 1 as const,
         lineStyle: LineStyle.Solid,
         title: `ENTRY ${selectedSignal.direction}`,
       },
       {
         price: selectedSignal.stopLoss,
-        color: '#EF4444',
-        lineStyle: LineStyle.Dashed,
-        title: 'SL',
+        color: slColor,
+        lineWidth: (hitTp1 ? 2 : 1) as 1 | 2,
+        lineStyle: hitTp1 ? LineStyle.Solid : LineStyle.Dashed,
+        title: slTitle,
       },
       {
         price: selectedSignal.tp1,
-        color: '#10B981',
-        lineStyle: LineStyle.Dotted,
-        title: 'TP1',
+        color: hitTp1 ? '#10B981' : '#34D399',
+        lineWidth: (hitTp1 ? 2 : 1) as 1 | 2,
+        lineStyle: hitTp1 ? LineStyle.Solid : LineStyle.Dotted,
+        title: hitTp1 ? '✓ TP1 ATINS' : 'TP1',
       },
       {
         price: selectedSignal.tp2,
         color: '#10B981',
-        lineStyle: LineStyle.Dashed,
-        title: 'TP2',
+        lineWidth: (hitTp2 ? 2 : 1) as 1 | 2,
+        lineStyle: hitTp2 ? LineStyle.Solid : LineStyle.Dashed,
+        title: hitTp2 ? '✓ TP2 ATINS' : 'TP2',
       },
       {
         price: selectedSignal.tp3,
         color: '#059669',
+        lineWidth: (hitTp3 ? 2 : 1) as 1 | 2,
         lineStyle: LineStyle.Solid,
-        title: 'TP3',
+        title: hitTp3 ? '✓ TP3 ATINS' : 'TP3',
       },
       {
         price: selectedSignal.tp4,
         color: '#047857',
+        lineWidth: (hitTp4 ? 2 : 1) as 1 | 2,
         lineStyle: LineStyle.Solid,
-        title: 'TP4',
+        title: hitTp4 ? '✓ TP4 FINAL' : 'TP4',
       },
     ];
 
@@ -277,7 +301,7 @@ export function ChartPanel({
       series.createPriceLine({
         price: cfg.price,
         color: cfg.color,
-        lineWidth: 1,
+        lineWidth: cfg.lineWidth,
         lineStyle: cfg.lineStyle,
         axisLabelVisible: true,
         title: cfg.title,
@@ -337,26 +361,76 @@ export function ChartPanel({
         </div>
       </div>
 
-      {/* EMA Legend */}
-      {showEma && analysis && (
-        <div className="px-4 py-1.5 border-b border-slate-100 dark:border-[#151B26] flex flex-wrap items-center gap-4 text-[11px] font-mono tabular-nums text-slate-600 dark:text-slate-400">
-          <span>
-            <span className="text-amber-500 font-semibold">EMA20</span> {analysis.indicators.ema20.toFixed(2)}
-          </span>
-          <span>
-            <span className="text-sky-400 font-semibold">EMA50</span> {analysis.indicators.ema50.toFixed(2)}
-          </span>
-          <span>
-            <span className="text-purple-400 font-semibold">EMA200</span> {analysis.indicators.ema200.toFixed(2)}
-          </span>
-          <span>
-            RSI(14) <strong className="text-slate-900 dark:text-slate-200">{analysis.indicators.rsi14.toFixed(1)}</strong>
-          </span>
-          <span>
-            ATR(14) <strong className="text-slate-900 dark:text-slate-200">{analysis.indicators.atr14.toFixed(2)}</strong>
-          </span>
-        </div>
-      )}
+      {/* EMA Legend + Active Signal Target Progression Strip */}
+      <div className="px-4 py-1.5 border-b border-slate-100 dark:border-[#151B26] flex flex-wrap items-center justify-between gap-3 text-[11px] font-mono tabular-nums text-slate-600 dark:text-slate-400">
+        {showEma && analysis ? (
+          <div className="flex flex-wrap items-center gap-4">
+            <span>
+              <span className="text-amber-500 font-semibold">EMA20</span> {analysis.indicators.ema20.toFixed(2)}
+            </span>
+            <span>
+              <span className="text-sky-400 font-semibold">EMA50</span> {analysis.indicators.ema50.toFixed(2)}
+            </span>
+            <span>
+              <span className="text-purple-400 font-semibold">EMA200</span> {analysis.indicators.ema200.toFixed(2)}
+            </span>
+            <span>
+              RSI(14) <strong className="text-slate-900 dark:text-slate-200">{analysis.indicators.rsi14.toFixed(1)}</strong>
+            </span>
+            <span>
+              ATR(14) <strong className="text-slate-900 dark:text-slate-200">{analysis.indicators.atr14.toFixed(2)}</strong>
+            </span>
+          </div>
+        ) : (
+          <span />
+        )}
+
+        {selectedSignal && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={
+                selectedSignal.direction === 'BUY'
+                  ? 'font-bold text-emerald-600 dark:text-emerald-400'
+                  : 'font-bold text-rose-600 dark:text-rose-400'
+              }
+            >
+              {selectedSignal.direction} @ {selectedSignal.entry.toFixed(2)}
+            </span>
+            <span aria-hidden="true">·</span>
+            <span
+              className={
+                selectedSignal.reachedTargets.includes('TP1')
+                  ? 'text-amber-600 dark:text-amber-400 font-semibold'
+                  : 'text-rose-600 dark:text-rose-400'
+              }
+            >
+              SL {selectedSignal.stopLoss.toFixed(2)}
+              {selectedSignal.reachedTargets.includes('TP2')
+                ? ' (Profit Blocat)'
+                : selectedSignal.reachedTargets.includes('TP1')
+                  ? ' (Breakeven)'
+                  : ''}
+            </span>
+            <span aria-hidden="true">·</span>
+            {(['TP1', 'TP2', 'TP3', 'TP4'] as const).map((tp) => {
+              const hit = selectedSignal.reachedTargets.includes(tp);
+              return (
+                <span
+                  key={tp}
+                  className={
+                    hit
+                      ? 'font-bold text-emerald-600 dark:text-emerald-400'
+                      : 'text-slate-400 dark:text-slate-500'
+                  }
+                >
+                  {tp}
+                  {hit ? '✓' : ''}
+                </span>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* Chart Canvas */}
       <div className="relative w-full h-[460px]">

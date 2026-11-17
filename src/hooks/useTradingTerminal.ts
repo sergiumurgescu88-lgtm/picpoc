@@ -150,6 +150,8 @@ export function useTradingTerminal() {
                 if (!u) return s;
                 return {
                   ...s,
+                  stopLoss: u.stopLoss,
+                  initialStopLoss: u.initialStopLoss ?? s.initialStopLoss,
                   currentPrice: u.currentPrice,
                   pnlPips: u.pnlPips,
                   rMultiple: u.rMultiple,
@@ -163,6 +165,13 @@ export function useTradingTerminal() {
                 };
               })
             );
+          }
+          break;
+        }
+        case 'candles:sync': {
+          setTick(msg.payload.tick);
+          if (msg.payload.timeframe === tfRef.current) {
+            setCandles(msg.payload.candles);
           }
           break;
         }

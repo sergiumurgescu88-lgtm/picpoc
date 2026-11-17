@@ -35,6 +35,8 @@ export type WsIncomingMessage =
         timeframe: Timeframe;
         activeUpdates: {
           id: string;
+          stopLoss: number;
+          initialStopLoss?: number;
           currentPrice: number;
           pnlPips: number;
           rMultiple: number;
@@ -51,6 +53,14 @@ export type WsIncomingMessage =
             detectedAt: number;
           } | null;
         }[];
+      };
+    }
+  | {
+      type: 'candles:sync';
+      payload: {
+        timeframe: Timeframe;
+        candles: Candle[];
+        tick: MarketTick;
       };
     }
   | {

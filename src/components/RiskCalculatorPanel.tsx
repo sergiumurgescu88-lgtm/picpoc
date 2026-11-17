@@ -34,7 +34,9 @@ export function RiskCalculatorPanel({
     selectedSignal ? selectedSignal.entry.toFixed(2) : (currentPrice ?? 2635).toFixed(2)
   );
   const [stopLoss, setStopLoss] = useState(() =>
-    selectedSignal ? selectedSignal.stopLoss.toFixed(2) : ((currentPrice ?? 2635) - 6).toFixed(2)
+    selectedSignal
+      ? (selectedSignal.initialStopLoss ?? selectedSignal.stopLoss).toFixed(2)
+      : ((currentPrice ?? 2635) - 6).toFixed(2)
   );
   const [tp1, setTp1] = useState(() =>
     selectedSignal ? selectedSignal.tp1.toFixed(2) : ((currentPrice ?? 2635) + 7.5).toFixed(2)
@@ -50,7 +52,7 @@ export function RiskCalculatorPanel({
 
   const loadFromSignal = (sig: TradingSignal) => {
     setEntryPrice(sig.entry.toFixed(2));
-    setStopLoss(sig.stopLoss.toFixed(2));
+    setStopLoss((sig.initialStopLoss ?? sig.stopLoss).toFixed(2));
     setTp1(sig.tp1.toFixed(2));
     setTp2(sig.tp2.toFixed(2));
     setTp3(sig.tp3.toFixed(2));

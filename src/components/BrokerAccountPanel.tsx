@@ -181,7 +181,8 @@ export function BrokerAccountPanel({
       setTpDistInput(suggestedTpDistance.toFixed(2));
     } else if (selectedSignal) {
       setTradeSide(selectedSignal.direction);
-      const slDist = Math.abs(selectedSignal.entry - selectedSignal.stopLoss);
+      const baseSl = selectedSignal.initialStopLoss ?? selectedSignal.stopLoss;
+      const slDist = Math.abs(selectedSignal.entry - baseSl);
       const tpDist = Math.abs(selectedSignal.tp2 - selectedSignal.entry);
       if (slDist >= 0.5) setSlDistInput(slDist.toFixed(2));
       if (tpDist >= 0.5) setTpDistInput(tpDist.toFixed(2));
@@ -555,6 +556,42 @@ export function BrokerAccountPanel({
                   />
                 </label>
               </div>
+
+              {selectedSignal && (
+                <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                  <span className="text-slate-500 dark:text-slate-400">
+                    Țintă Take-Profit din semnal:
+                  </span>
+                  <div className="inline-flex items-center gap-1">
+                    {(
+                      [
+                        { label: 'TP1', price: selectedSignal.tp1 },
+                        { label: 'TP2', price: selectedSignal.tp2 },
+                        { label: 'TP3', price: selectedSignal.tp3 },
+                        { label: 'TP4', price: selectedSignal.tp4 },
+                      ] as const
+                    ).map((t) => {
+                      const dist = Math.max(0.5, Math.abs(t.price - selectedSignal.entry));
+                      return (
+                        <button
+                          key={t.label}
+                          type="button"
+                          onClick={() => {
+                            setTradeSide(selectedSignal.direction);
+                            const baseSl = selectedSignal.initialStopLoss ?? selectedSignal.stopLoss;
+                            const slDist = Math.max(0.5, Math.abs(selectedSignal.entry - baseSl));
+                            setSlDistInput(slDist.toFixed(2));
+                            setTpDistInput(dist.toFixed(2));
+                          }}
+                          className="px-2 py-0.5 rounded border border-slate-200 dark:border-[#222C40] bg-slate-50 dark:bg-[#141A26] hover:border-emerald-500/60 font-mono tabular-nums text-slate-700 dark:text-slate-200 cursor-pointer whitespace-nowrap shrink-0"
+                        >
+                          {t.label} (${dist.toFixed(2)})
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400">
                 <span>
