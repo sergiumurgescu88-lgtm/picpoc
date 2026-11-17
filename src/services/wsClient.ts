@@ -12,6 +12,7 @@ import {
   TechnicalAnalysisReport,
   Timeframe,
   TradingSignal,
+  TrailingStopStage,
 } from '../types/trading';
 
 export type WsIncomingMessage =
@@ -37,6 +38,9 @@ export type WsIncomingMessage =
           id: string;
           stopLoss: number;
           initialStopLoss?: number;
+          trailingStopStage?: TrailingStopStage;
+          breakevenActivatedAt?: number;
+          peakFavorablePrice?: number;
           currentPrice: number;
           pnlPips: number;
           rMultiple: number;

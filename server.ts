@@ -38,12 +38,18 @@ async function bootstrapServer() {
     maxPayload: 4096,
   });
 
-  const notificationHub = new NotificationHub(wss, marketFeed, signalEngine, stateStore);
-  notificationHub.initialize();
-
   const brokerService = new CTraderBrokerService();
   // Connect asynchronously so port 3000 binds immediately without waiting on external handshake
   void brokerService.initialize();
+
+  const notificationHub = new NotificationHub(
+    wss,
+    marketFeed,
+    signalEngine,
+    stateStore,
+    brokerService
+  );
+  notificationHub.initialize();
 
   // Mount secured REST API
   app.use('/api', createApiRouter(marketFeed, signalEngine, notificationHub, brokerService));

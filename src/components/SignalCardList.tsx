@@ -155,8 +155,8 @@ export function SignalCardList({
         </div>
         <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
           {strategyPolicy === 'EXIT_PROFIT_ON_REVERSAL'
-            ? 'Nu deschide direcție opusă peste poziția activă. Dacă trendul se inversează și poziția este pe plus, închide protejat pe profit; dacă e pe minus, avertizează și păstrează SL.'
-            : 'Blochează orice inversare de strategie până când poziția activă atinge TP4, Breakeven (după TP1) sau SL. Emite doar avertizare la schimbarea trendului.'}
+            ? 'Trailing Stop Automat: la atingerea TP1 mută SL la Breakeven (Entry, risc 0%). Dacă trendul se inversează pe plus, închide protejat pe profit; dacă e sub Entry, păstrează SL.'
+            : 'Trailing Stop Automat: la atingerea TP1 mută SL la Breakeven (Entry, risc 0%) și urcă SL pe măsură ce prețul atinge TP2/TP3, protejând capitalul la inversarea trendului.'}
         </p>
       </div>
 
@@ -268,17 +268,32 @@ export function SignalCardList({
                       SL
                       {sig.reachedTargets.includes('SL')
                         ? ' ✗'
-                        : sig.reachedTargets.includes('TP2')
-                          ? ' · Blocat'
-                          : sig.reachedTargets.includes('TP1')
-                            ? ' · BE'
-                            : ''}
+                        : sig.trailingStopStage === 'LOCKED_TP2' || sig.trailingStopStage === 'LOCKED_TP3' || sig.reachedTargets.includes('TP3')
+                          ? ' · TP2'
+                          : sig.trailingStopStage === 'LOCKED_TP1' || sig.reachedTargets.includes('TP2')
+                            ? ' · TP1'
+                            : sig.trailingStopStage === 'DYNAMIC_TRAIL'
+                              ? ' · Trail'
+                              : sig.trailingStopStage === 'BREAKEVEN' ||
+                                  sig.reachedTargets.includes('TP1') ||
+                                  (sig.initialStopLoss !== undefined && Math.abs(sig.stopLoss - sig.initialStopLoss) >= 0.05)
+                                ? ' · BE'
+                                : ''}
                     </div>
                     <div
                       className={`font-semibold ${
-                        sig.reachedTargets.includes('TP1') && !sig.reachedTargets.includes('SL')
-                          ? 'text-amber-600 dark:text-amber-400'
-                          : 'text-rose-600 dark:text-rose-400'
+                        !sig.reachedTargets.includes('SL') &&
+                        (sig.trailingStopStage === 'DYNAMIC_TRAIL' ||
+                          sig.trailingStopStage === 'LOCKED_TP1' ||
+                          sig.trailingStopStage === 'LOCKED_TP2' ||
+                          sig.trailingStopStage === 'LOCKED_TP3')
+                          ? 'text-emerald-600 dark:text-emerald-400'
+                          : !sig.reachedTargets.includes('SL') &&
+                              (sig.trailingStopStage === 'BREAKEVEN' ||
+                                sig.reachedTargets.includes('TP1') ||
+                                (sig.initialStopLoss !== undefined && Math.abs(sig.stopLoss - sig.initialStopLoss) >= 0.05))
+                            ? 'text-amber-600 dark:text-amber-400'
+                            : 'text-rose-600 dark:text-rose-400'
                       }`}
                     >
                       {sig.stopLoss.toFixed(2)}
@@ -335,6 +350,23 @@ export function SignalCardList({
                       <strong className="text-slate-700 dark:text-slate-300">Invalidare:</strong>{' '}
                       {sig.invalidation}
                     </div>
+
+                    {sig.initialStopLoss !== undefined &&
+                      Math.abs(sig.stopLoss - sig.initialStopLoss) >= 0.05 && (
+                        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[11px] text-emerald-800 dark:text-emerald-300 flex items-start gap-2">
+                          <ShieldCheck className="w-3.5 h-3.5 shrink-0 mt-0.5 text-emerald-500" />
+                          <span>
+                            <strong>Trailing Stop Activ:</strong> Stop-Loss mutat automat de la{' '}
+                            <span className="font-mono">{sig.initialStopLoss.toFixed(2)}</span> la{' '}
+                            <span className="font-mono font-semibold">{sig.stopLoss.toFixed(2)}</span>{' '}
+                            (
+                            {Math.abs(sig.stopLoss - sig.entry) < 0.06
+                              ? 'Breakeven · Risc Capital 0%'
+                              : 'Profit Securizat pe Reversie'}
+                            ).
+                          </span>
+                        </div>
+                      )}
 
                     {sig.trendWarning && isOpen && (
                       <div className="rounded-lg border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-2">

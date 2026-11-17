@@ -73,7 +73,10 @@ class NotificationService {
       const notif = new Notification(event.title, {
         body: event.message,
         tag: event.id,
-        requireInteraction: event.category === 'SIGNAL_NEW' || event.category === 'SIGNAL_TP',
+        requireInteraction:
+          event.category === 'SIGNAL_NEW' ||
+          event.category === 'SIGNAL_TP' ||
+          event.category === 'SIGNAL_BREAKEVEN',
       });
       setTimeout(() => notif.close(), 7500);
     } catch {
@@ -94,7 +97,9 @@ class NotificationService {
     try {
       const now = ctx.currentTime;
       const notes =
-        category === 'SIGNAL_TP' || category === 'SIGNAL_REVERSAL_EXIT'
+        category === 'SIGNAL_TP' ||
+        category === 'SIGNAL_REVERSAL_EXIT' ||
+        category === 'SIGNAL_BREAKEVEN'
           ? [659.25, 880, 1046.5]
           : category === 'SIGNAL_SL'
             ? [349.23, 277.18]

@@ -619,8 +619,19 @@ export function SignalResolutionPanel({
       textClass: 'text-amber-600 dark:text-amber-400',
     },
     {
+      key: 'be',
+      label: 'Trailing / Breakeven Activ la Reversie (Capital Protejat)',
+      count: milestones.breakevenExitCount ?? 0,
+      pct:
+        overview.resolvedCount > 0
+          ? (((milestones.breakevenExitCount ?? 0) / overview.resolvedCount) * 100)
+          : 0,
+      barClass: 'bg-sky-500',
+      textClass: 'text-sky-600 dark:text-sky-400',
+    },
+    {
       key: 'sl',
-      label: 'Stop-Loss (SL) Atins',
+      label: 'Stop-Loss Inițial (-1R) Atins',
       count: milestones.slHitCount,
       pct: milestones.slHitRatePct,
       barClass: 'bg-rose-500',
@@ -839,7 +850,7 @@ export function SignalResolutionPanel({
                 Rezoluție Ținte Atinse: TP1 · TP2 · TP3 · TP4 & Stop-Loss
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Rata de atingere pe cele {overview.resolvedCount} semnale evaluate · {milestones.reversalExitCount} ieșiri profit pe reversie · {milestones.manualClosedCount} închise manual · {milestones.activePendingCount} active
+                Rata de atingere pe cele {overview.resolvedCount} semnale evaluate · {milestones.breakevenExitCount ?? 0} protecții Breakeven (TP1→BE) · {milestones.reversalExitCount} ieșiri profit pe reversie · {milestones.activePendingCount} active
               </p>
             </div>
           </div>
@@ -1238,8 +1249,29 @@ export function SignalResolutionPanel({
                       <td className="py-2.5 px-3 text-right text-slate-900 dark:text-white">
                         {sig.entry.toFixed(2)}
                       </td>
-                      <td className="py-2.5 px-3 text-right text-rose-600 dark:text-rose-400">
+                      <td
+                        title={
+                          sig.initialStopLoss !== undefined &&
+                          Math.abs(sig.stopLoss - sig.initialStopLoss) >= 0.05
+                            ? `SL inițial: ${sig.initialStopLoss.toFixed(2)} → mutat la ${sig.stopLoss.toFixed(2)}`
+                            : undefined
+                        }
+                        className={`py-2.5 px-3 text-right whitespace-nowrap ${
+                          sig.initialStopLoss !== undefined &&
+                          Math.abs(sig.stopLoss - sig.initialStopLoss) >= 0.05 &&
+                          !sig.reachedTargets.includes('SL')
+                            ? 'text-amber-600 dark:text-amber-400 font-semibold'
+                            : 'text-rose-600 dark:text-rose-400'
+                        }`}
+                      >
                         {sig.stopLoss.toFixed(2)}
+                        {sig.initialStopLoss !== undefined &&
+                        Math.abs(sig.stopLoss - sig.initialStopLoss) >= 0.05 &&
+                        !sig.reachedTargets.includes('SL')
+                          ? Math.abs(sig.stopLoss - sig.entry) < 0.06
+                            ? ' (BE)'
+                            : ' (Trail)'
+                          : ''}
                       </td>
                       <td className="py-2.5 px-3 text-center">
                         <div className="inline-flex items-center gap-2 text-[11px]">

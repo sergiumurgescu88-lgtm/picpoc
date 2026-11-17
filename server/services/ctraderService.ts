@@ -8,6 +8,7 @@ const PAYLOAD_TYPES = {
   OA_ACCOUNT_AUTH_REQ: 2102,
   OA_ACCOUNT_AUTH_RES: 2103,
   OA_NEW_ORDER_REQ: 2106,
+  OA_AMEND_POSITION_SLTP_REQ: 2110,
   OA_CLOSE_POSITION_REQ: 2111,
   OA_ASSET_LIST_REQ: 2112,
   OA_ASSET_LIST_RES: 2113,
@@ -566,6 +567,101 @@ export class CTraderBrokerService {
     const record = this.recordExecutionEvent(res);
     await this.syncAccountState();
     return record;
+  }
+
+  public async amendDemoPositionSlTp(
+    positionId: number,
+    stopLoss: number,
+    takeProfit?: number
+  ): Promise<CTraderExecutionRecord> {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN || !this.activeAccountId) {
+      throw new Error('Conexiunea cu contul demo cTrader nu este activă.');
+    }
+    if (this.activeAccountDetails?.isLive) {
+      throw new Error('Modificarea automată SL/TP este permisă exclusiv pe contul DEMO.');
+    }
+    const pos = this.openPositions.find((p) => p.positionId === positionId);
+    if (!pos) {
+      throw new Error(`Poziția #${positionId} nu a fost găsită printre pozițiile deschise.`);
+    }
+
+    const digits = this.symbolsMap.get(pos.symbolId)?.digits ?? this.xauSymbol?.digits ?? 2;
+    const factor = Math.pow(10, digits);
+    const cleanSl = Math.round(stopLoss * factor) / factor;
+    const effectiveTp = takeProfit ?? pos.takeProfit;
+
+    const payload: Record<string, unknown> = {
+      ctidTraderAccountId: this.activeAccountId,
+      positionId,
+      stopLoss: cleanSl,
+    };
+    if (effectiveTp !== undefined && effectiveTp > 0) {
+      payload.takeProfit = Math.round(effectiveTp * factor) / factor;
+    }
+
+    const res = await this.sendRequest(PAYLOAD_TYPES.OA_AMEND_POSITION_SLTP_REQ, payload);
+    const record = this.recordExecutionEvent(res);
+    await this.syncAccountState();
+    return record;
+  }
+
+  public async movePositionToBreakeven(positionId: number): Promise<CTraderExecutionRecord> {
+    const pos = this.openPositions.find((p) => p.positionId === positionId);
+    if (!pos) {
+      throw new Error(`Poziția #${positionId} nu a fost găsită printre pozițiile deschise.`);
+    }
+
+    const bid = this.xauSymbol?.bid;
+    const ask = this.xauSymbol?.ask;
+    if (pos.tradeSide === 'BUY' && bid !== null && bid !== undefined && bid <= pos.entryPrice + 0.15) {
+      throw new Error(
+        `Poziția BUY #${positionId} (Entry ${pos.entryPrice.toFixed(2)}) nu are încă distanță pozitivă suficientă față de Bid (${bid.toFixed(2)}) pentru Breakeven.`
+      );
+    }
+    if (pos.tradeSide === 'SELL' && ask !== null && ask !== undefined && ask >= pos.entryPrice - 0.15) {
+      throw new Error(
+        `Poziția SELL #${positionId} (Entry ${pos.entryPrice.toFixed(2)}) nu are încă distanță pozitivă suficientă față de Ask (${ask.toFixed(2)}) pentru Breakeven.`
+      );
+    }
+
+    return this.amendDemoPositionSlTp(positionId, pos.entryPrice, pos.takeProfit);
+  }
+
+  public async autoSyncTrailingStopForSignal(direction: 'BUY' | 'SELL'): Promise<number> {
+    if (
+      !this.ws ||
+      this.ws.readyState !== WebSocket.OPEN ||
+      !this.activeAccountId ||
+      this.activeAccountDetails?.isLive
+    ) {
+      return 0;
+    }
+
+    const bid = this.xauSymbol?.bid;
+    const ask = this.xauSymbol?.ask;
+    let amendedCount = 0;
+
+    for (const pos of [...this.openPositions]) {
+      if (pos.tradeSide !== direction) continue;
+
+      if (direction === 'BUY') {
+        const needsBreakeven = !pos.stopLoss || pos.stopLoss < pos.entryPrice - 0.02;
+        const canPlaceBe = bid !== null && bid !== undefined && bid > pos.entryPrice + 0.25;
+        if (needsBreakeven && canPlaceBe) {
+          await this.amendDemoPositionSlTp(pos.positionId, pos.entryPrice, pos.takeProfit);
+          amendedCount += 1;
+        }
+      } else {
+        const needsBreakeven = !pos.stopLoss || pos.stopLoss > pos.entryPrice + 0.02;
+        const canPlaceBe = ask !== null && ask !== undefined && ask < pos.entryPrice - 0.25;
+        if (needsBreakeven && canPlaceBe) {
+          await this.amendDemoPositionSlTp(pos.positionId, pos.entryPrice, pos.takeProfit);
+          amendedCount += 1;
+        }
+      }
+    }
+
+    return amendedCount;
   }
 
   public getPublicStatus(): BrokerPublicStatus {

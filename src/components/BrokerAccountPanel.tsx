@@ -42,6 +42,7 @@ export function BrokerAccountPanel({
   const [isLoading, setIsLoading] = useState(true);
   const [isBusy, setIsBusy] = useState(false);
   const [closingPosId, setClosingPosId] = useState<number | null>(null);
+  const [movingBePosId, setMovingBePosId] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
   // Order ticket state (Demo execution only)
@@ -267,6 +268,37 @@ export function BrokerAccountPanel({
     }
   };
 
+  const handleMoveToBreakeven = async (positionId: number) => {
+    setMovingBePosId(positionId);
+    setFeedback(null);
+    try {
+      const res = await fetch(`/api/broker/positions/${positionId}/breakeven`, {
+        method: 'POST',
+      });
+      const data = (await res.json()) as {
+        status?: BrokerPublicStatus;
+        error?: string;
+        execution?: { stopLoss?: number };
+      };
+      if (!res.ok) {
+        setFeedback({
+          type: 'err',
+          text: data.error || 'Nu s-a putut muta Stop-Loss la Breakeven.',
+        });
+        return;
+      }
+      if (data.status) setStatus(data.status);
+      setFeedback({
+        type: 'ok',
+        text: `Stop-Loss mutat la Breakeven${data.execution?.stopLoss ? ` (${data.execution.stopLoss.toFixed(2)})` : ''} pentru poziția #${positionId} (Risc 0%).`,
+      });
+    } catch {
+      setFeedback({ type: 'err', text: 'Eroare la modificarea Stop-Loss la Breakeven.' });
+    } finally {
+      setMovingBePosId(null);
+    }
+  };
+
   const acc = status?.activeAccount ?? null;
   const sym = status?.xauSymbol ?? null;
   const isAuthenticated = status?.connectionState === 'AUTHENTICATED';
@@ -306,7 +338,7 @@ export function BrokerAccountPanel({
             </span>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Conexiune securizată server-side (OAuth2 + WebSocket Spotware) · Execuție protejată exclusiv pe cont DEMO
+            Conexiune securizată server-side (OAuth2 + WebSocket Spotware) · Sincronizare automată SL → Breakeven la atingerea TP1
           </p>
         </div>
 
@@ -646,45 +678,85 @@ export function BrokerAccountPanel({
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-[#182030] font-mono tabular-nums">
                     {status && status.openPositions.length > 0 ? (
-                      status.openPositions.map((pos) => (
-                        <tr key={pos.positionId} className="hover:bg-slate-50 dark:hover:bg-[#111622]">
-                          <td className="py-2.5 pr-3 text-slate-900 dark:text-white">
-                            <div className="font-semibold">{pos.symbolName}</div>
-                            <div className="text-[11px] text-slate-500">#{pos.positionId}</div>
-                          </td>
-                          <td
-                            className={`py-2.5 px-2 font-bold ${
-                              pos.tradeSide === 'BUY'
-                                ? 'text-emerald-600 dark:text-emerald-400'
-                                : 'text-rose-600 dark:text-rose-400'
-                            }`}
-                          >
-                            {pos.tradeSide}
-                          </td>
-                          <td className="py-2.5 px-2 text-right text-slate-800 dark:text-slate-200">
-                            {pos.lots.toFixed(2)}
-                          </td>
-                          <td className="py-2.5 px-2 text-right text-slate-900 dark:text-white">
-                            {pos.entryPrice.toFixed(2)}
-                          </td>
-                          <td className="py-2.5 px-2 text-right text-[11px] text-slate-500 dark:text-slate-400">
-                            <span>{pos.stopLoss ? pos.stopLoss.toFixed(2) : '—'}</span>
-                            <span> / </span>
-                            <span>{pos.takeProfit ? pos.takeProfit.toFixed(2) : '—'}</span>
-                          </td>
-                          <td className="py-2.5 pl-2 text-right font-sans">
-                            <button
-                              type="button"
-                              disabled={closingPosId === pos.positionId}
-                              onClick={() => void handleClosePosition(pos.positionId)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-rose-500/40 bg-rose-500/10 hover:bg-rose-500/20 text-[11px] font-medium text-rose-700 dark:text-rose-300 transition-colors cursor-pointer disabled:opacity-50"
+                      status.openPositions.map((pos) => {
+                        const isAlreadyProtected =
+                          pos.stopLoss !== null &&
+                          pos.stopLoss !== undefined &&
+                          (pos.tradeSide === 'BUY'
+                            ? pos.stopLoss >= pos.entryPrice - 0.02
+                            : pos.stopLoss <= pos.entryPrice + 0.02);
+
+                        return (
+                          <tr key={pos.positionId} className="hover:bg-slate-50 dark:hover:bg-[#111622]">
+                            <td className="py-2.5 pr-3 text-slate-900 dark:text-white">
+                              <div className="font-semibold">{pos.symbolName}</div>
+                              <div className="text-[11px] text-slate-500">#{pos.positionId}</div>
+                            </td>
+                            <td
+                              className={`py-2.5 px-2 font-bold ${
+                                pos.tradeSide === 'BUY'
+                                  ? 'text-emerald-600 dark:text-emerald-400'
+                                  : 'text-rose-600 dark:text-rose-400'
+                              }`}
                             >
-                              <XCircle className="w-3 h-3" />
-                              <span>{closingPosId === pos.positionId ? 'Se închide...' : 'Închide'}</span>
-                            </button>
-                          </td>
-                        </tr>
-                      ))
+                              {pos.tradeSide}
+                            </td>
+                            <td className="py-2.5 px-2 text-right text-slate-800 dark:text-slate-200">
+                              {pos.lots.toFixed(2)}
+                            </td>
+                            <td className="py-2.5 px-2 text-right text-slate-900 dark:text-white">
+                              {pos.entryPrice.toFixed(2)}
+                            </td>
+                            <td className="py-2.5 px-2 text-right text-[11px] text-slate-500 dark:text-slate-400">
+                              <span
+                                className={
+                                  isAlreadyProtected
+                                    ? 'font-semibold text-amber-600 dark:text-amber-400'
+                                    : ''
+                                }
+                              >
+                                {pos.stopLoss ? pos.stopLoss.toFixed(2) : '—'}
+                                {isAlreadyProtected ? ' (BE)' : ''}
+                              </span>
+                              <span> / </span>
+                              <span>{pos.takeProfit ? pos.takeProfit.toFixed(2) : '—'}</span>
+                            </td>
+                            <td className="py-2.5 pl-2 text-right font-sans">
+                              <div className="inline-flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  disabled={isAlreadyProtected || movingBePosId === pos.positionId}
+                                  onClick={() => void handleMoveToBreakeven(pos.positionId)}
+                                  title={
+                                    isAlreadyProtected
+                                      ? 'Stop-Loss este deja securizat la Breakeven sau pe profit'
+                                      : 'Mută Stop-Loss la Entry (Breakeven · Risc 0%)'
+                                  }
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-[11px] font-medium text-amber-700 dark:text-amber-300 transition-colors cursor-pointer disabled:opacity-45 whitespace-nowrap shrink-0"
+                                >
+                                  <ShieldCheck className="w-3 h-3" />
+                                  <span>
+                                    {movingBePosId === pos.positionId
+                                      ? 'SL...'
+                                      : isAlreadyProtected
+                                        ? 'SL @ BE ✓'
+                                        : 'SL → BE'}
+                                  </span>
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={closingPosId === pos.positionId}
+                                  onClick={() => void handleClosePosition(pos.positionId)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-rose-500/40 bg-rose-500/10 hover:bg-rose-500/20 text-[11px] font-medium text-rose-700 dark:text-rose-300 transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap shrink-0"
+                                >
+                                  <XCircle className="w-3 h-3" />
+                                  <span>{closingPosId === pos.positionId ? 'Se închide...' : 'Închide'}</span>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
                     ) : (
                       <tr>
                         <td colSpan={6} className="py-6 text-center font-sans text-slate-500 dark:text-slate-400">

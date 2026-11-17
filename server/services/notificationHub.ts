@@ -10,6 +10,7 @@ import {
   StrategyPolicy,
   TradingSignal,
 } from '../types/trading.js';
+import { CTraderBrokerService } from './ctraderService.js';
 import { MarketFeedService } from './marketFeed.js';
 import { TerminalStateStore } from './stateStore.js';
 import { SignalGeneratorEngine } from '../engine/signalGenerator.js';
@@ -34,7 +35,8 @@ export class NotificationHub {
     private wss: WebSocketServer,
     private marketFeed: MarketFeedService,
     private signalEngine: SignalGeneratorEngine,
-    private stateStore?: TerminalStateStore
+    private stateStore?: TerminalStateStore,
+    private brokerService?: CTraderBrokerService
   ) {}
 
   public initialize(): void {
@@ -185,28 +187,45 @@ export class NotificationHub {
   }
 
   private emitSignalTransitions(
-    transitions: { signal: TradingSignal; previousStatus: string }[],
+    transitions: { signal: TradingSignal; previousStatus: string; previousStopLoss?: number }[],
     refPrice: number
   ): void {
-    for (const { signal } of transitions) {
+    for (const { signal, previousStatus, previousStopLoss } of transitions) {
       const isSl = signal.status === 'SL_HIT';
       const isBeClose = Boolean(signal.closedAt) && signal.exitReason === 'BREAKEVEN_LOCK';
       const isTp4Full = signal.status === 'TP4_HIT';
+      const isPureTrailingStep =
+        !isSl && !isBeClose && !isTp4Full && signal.status === previousStatus;
+
+      // Automatically sync matching Pepperstone Demo position SL to Breakeven once TP1+ is reached
+      if (!isSl && (signal.reachedTargets.includes('TP1') || signal.trailingStopStage === 'BREAKEVEN')) {
+        void this.brokerService?.autoSyncTrailingStopForSignal(signal.direction).catch(() => {});
+      }
 
       const title = isSl
-        ? `Stop Loss Atins (${signal.direction} ${signal.timeframe})`
+        ? `Stop Loss Inițial Atins (${signal.direction} ${signal.timeframe})`
         : isBeClose
-          ? `Profit Blocat · Poziție Închisă (${signal.direction} ${signal.timeframe})`
+          ? `Trailing Stop / Breakeven Executat · Capital Protejat (${signal.direction} ${signal.timeframe})`
           : isTp4Full
             ? `TP4 Final Atins · Tranzacție Închisă (${signal.direction} ${signal.timeframe})`
-            : `${signal.status.replace('_', ' ')} Atins · SL Mutat la ${signal.status === 'TP1_HIT' ? 'Breakeven' : signal.stopLoss.toFixed(2)}`;
+            : isPureTrailingStep
+              ? `Trailing Stop Avansat Automat (${signal.direction} ${signal.timeframe})`
+              : signal.status === 'TP1_HIT'
+                ? `TP1 Atins · SL Mutat Automat la Breakeven (${signal.entry.toFixed(2)})`
+                : `${signal.status.replace('_', ' ')} Atins · Trailing SL Blocat @ ${signal.stopLoss.toFixed(2)}`;
 
       const message =
         signal.exitNote ||
-        `${signal.symbol} @ ${refPrice.toFixed(2)} · SL activ: ${signal.stopLoss.toFixed(2)} · Profit curent: ${signal.pnlPips >= 0 ? '+' : ''}${signal.pnlPips.toFixed(1)} pips (${signal.rMultiple >= 0 ? '+' : ''}${signal.rMultiple.toFixed(2)}R)`;
+        (isPureTrailingStep && previousStopLoss !== undefined
+          ? `${signal.symbol} @ ${refPrice.toFixed(2)} · SL avansat de la ${previousStopLoss.toFixed(2)} la ${signal.stopLoss.toFixed(2)} · Capital protejat.`
+          : `${signal.symbol} @ ${refPrice.toFixed(2)} · Trailing SL activ: ${signal.stopLoss.toFixed(2)} · Profit curent: ${signal.pnlPips >= 0 ? '+' : ''}${signal.pnlPips.toFixed(1)} pips (${signal.rMultiple >= 0 ? '+' : ''}${signal.rMultiple.toFixed(2)}R)`);
 
       const notif = this.recordNotification({
-        category: isSl ? 'SIGNAL_SL' : 'SIGNAL_TP',
+        category: isSl
+          ? 'SIGNAL_SL'
+          : isBeClose || isPureTrailingStep || signal.status === 'TP1_HIT'
+            ? 'SIGNAL_BREAKEVEN'
+            : 'SIGNAL_TP',
         severity: isSl ? 'CRITICAL' : 'SUCCESS',
         title,
         message,
@@ -239,12 +258,22 @@ export class NotificationHub {
       const reversalActions = this.signalEngine.evaluateTrendReversalOnOpenSignals();
       for (const act of reversalActions) {
         const isExit = act.type === 'PROFIT_EXIT';
+        const isBeTightened = act.type === 'BREAKEVEN_TIGHTENED';
+        if (isBeTightened) {
+          void this.brokerService?.autoSyncTrailingStopForSignal(act.signal.direction).catch(() => {});
+        }
         const notif = this.recordNotification({
-          category: isExit ? 'SIGNAL_REVERSAL_EXIT' : 'SIGNAL_REVERSAL_WARN',
-          severity: isExit ? 'SUCCESS' : 'WARNING',
+          category: isExit
+            ? 'SIGNAL_REVERSAL_EXIT'
+            : isBeTightened
+              ? 'SIGNAL_BREAKEVEN'
+              : 'SIGNAL_REVERSAL_WARN',
+          severity: isExit || isBeTightened ? 'SUCCESS' : 'WARNING',
           title: isExit
             ? `Trend Inversat · Ieșire Profit (${act.signal.direction} ${act.signal.timeframe})`
-            : `Avertisment Schimbare Trend (${act.signal.direction} → ${act.detectedDirection})`,
+            : isBeTightened
+              ? `Protecție Reversie · SL Mutat la Breakeven (${act.signal.direction} ${act.signal.timeframe})`
+              : `Avertisment Schimbare Trend (${act.signal.direction} → ${act.detectedDirection})`,
           message: act.message,
           signalId: act.signal.id,
           direction: act.signal.direction,
@@ -282,6 +311,9 @@ export class NotificationHub {
             id: s.id,
             stopLoss: s.stopLoss,
             initialStopLoss: s.initialStopLoss,
+            trailingStopStage: s.trailingStopStage,
+            breakevenActivatedAt: s.breakevenActivatedAt,
+            peakFavorablePrice: s.peakFavorablePrice,
             currentPrice: s.currentPrice,
             pnlPips: s.pnlPips,
             rMultiple: s.rMultiple,

@@ -239,59 +239,89 @@ export function ChartPanel({
     const hitTp3 = selectedSignal.reachedTargets.includes('TP3');
     const hitTp4 = selectedSignal.reachedTargets.includes('TP4');
     const hitSl = selectedSignal.reachedTargets.includes('SL') || selectedSignal.status === 'SL_HIT';
+    const stage = selectedSignal.trailingStopStage;
+    const slMoved =
+      selectedSignal.initialStopLoss !== undefined &&
+      Math.abs(selectedSignal.stopLoss - selectedSignal.initialStopLoss) >= 0.1;
 
     const slTitle = hitSl
       ? '✗ SL ATINS'
-      : hitTp3
-        ? 'SL BLOCAT @ TP2'
-        : hitTp2
-          ? 'SL BLOCAT @ TP1'
-          : hitTp1
-            ? 'SL BREAKEVEN (0R)'
-            : 'SL';
+      : stage === 'LOCKED_TP3'
+        ? 'SL BLOCAT @ TP3'
+        : stage === 'LOCKED_TP2' || hitTp3
+          ? 'SL BLOCAT @ TP2'
+          : stage === 'LOCKED_TP1' || hitTp2
+            ? 'SL BLOCAT @ TP1'
+            : stage === 'DYNAMIC_TRAIL'
+              ? 'TRAILING SL (+PROFIT)'
+              : stage === 'BREAKEVEN' || hitTp1 || slMoved
+                ? 'SL BREAKEVEN (0R)'
+                : 'SL';
 
-    const slColor = hitTp1 && !hitSl ? '#F59E0B' : '#EF4444';
+    const slColor =
+      !hitSl && (stage === 'DYNAMIC_TRAIL' || stage === 'LOCKED_TP1' || stage === 'LOCKED_TP2' || stage === 'LOCKED_TP3')
+        ? '#10B981'
+        : !hitSl && (stage === 'BREAKEVEN' || hitTp1 || slMoved)
+          ? '#F59E0B'
+          : '#EF4444';
 
-    const linesConfig = [
+    const linesConfig: {
+      price: number;
+      color: string;
+      lineWidth: 1 | 2;
+      lineStyle: LineStyle;
+      title: string;
+    }[] = [
       {
         price: selectedSignal.entry,
         color: '#F59E0B',
-        lineWidth: 1 as const,
+        lineWidth: 1,
         lineStyle: LineStyle.Solid,
         title: `ENTRY ${selectedSignal.direction}`,
       },
       {
         price: selectedSignal.stopLoss,
         color: slColor,
-        lineWidth: (hitTp1 ? 2 : 1) as 1 | 2,
-        lineStyle: hitTp1 ? LineStyle.Solid : LineStyle.Dashed,
+        lineWidth: slMoved || hitTp1 ? 2 : 1,
+        lineStyle: slMoved || hitTp1 ? LineStyle.Solid : LineStyle.Dashed,
         title: slTitle,
       },
+      ...(slMoved && selectedSignal.initialStopLoss !== undefined
+        ? [
+            {
+              price: selectedSignal.initialStopLoss,
+              color: '#64748B',
+              lineWidth: 1 as const,
+              lineStyle: LineStyle.Dotted,
+              title: 'SL INIȚIAL (ANULAT)',
+            },
+          ]
+        : []),
       {
         price: selectedSignal.tp1,
         color: hitTp1 ? '#10B981' : '#34D399',
-        lineWidth: (hitTp1 ? 2 : 1) as 1 | 2,
+        lineWidth: hitTp1 ? 2 : 1,
         lineStyle: hitTp1 ? LineStyle.Solid : LineStyle.Dotted,
-        title: hitTp1 ? '✓ TP1 ATINS' : 'TP1',
+        title: hitTp1 ? '✓ TP1 ATINS (→ BE)' : 'TP1 (→ BE)',
       },
       {
         price: selectedSignal.tp2,
         color: '#10B981',
-        lineWidth: (hitTp2 ? 2 : 1) as 1 | 2,
+        lineWidth: hitTp2 ? 2 : 1,
         lineStyle: hitTp2 ? LineStyle.Solid : LineStyle.Dashed,
         title: hitTp2 ? '✓ TP2 ATINS' : 'TP2',
       },
       {
         price: selectedSignal.tp3,
         color: '#059669',
-        lineWidth: (hitTp3 ? 2 : 1) as 1 | 2,
+        lineWidth: hitTp3 ? 2 : 1,
         lineStyle: LineStyle.Solid,
         title: hitTp3 ? '✓ TP3 ATINS' : 'TP3',
       },
       {
         price: selectedSignal.tp4,
         color: '#047857',
-        lineWidth: (hitTp4 ? 2 : 1) as 1 | 2,
+        lineWidth: hitTp4 ? 2 : 1,
         lineStyle: LineStyle.Solid,
         title: hitTp4 ? '✓ TP4 FINAL' : 'TP4',
       },

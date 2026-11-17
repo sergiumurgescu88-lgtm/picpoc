@@ -495,5 +495,25 @@ export function createApiRouter(
     }
   });
 
+  router.post('/broker/positions/:positionId/breakeven', async (req: Request, res: Response) => {
+    if (!brokerService) {
+      res.status(503).json({ error: 'Serviciul broker nu este inițializat.' });
+      return;
+    }
+    const positionId = Number(req.params.positionId);
+    if (!Number.isInteger(positionId) || positionId <= 0) {
+      res.status(400).json({ error: 'ID poziție invalid.' });
+      return;
+    }
+    try {
+      const execution = await brokerService.movePositionToBreakeven(positionId);
+      res.json({ execution, status: brokerService.getPublicStatus() });
+    } catch (err) {
+      res.status(400).json({
+        error: err instanceof Error ? err.message : 'SL nu a putut fi mutat la Breakeven.',
+      });
+    }
+  });
+
   return router;
 }

@@ -18,6 +18,13 @@ export type ExitReason =
   | 'BREAKEVEN_LOCK'
   | 'TREND_REVERSAL_PROFIT'
   | 'MANUAL_CLOSE';
+export type TrailingStopStage =
+  | 'INITIAL'
+  | 'BREAKEVEN'
+  | 'DYNAMIC_TRAIL'
+  | 'LOCKED_TP1'
+  | 'LOCKED_TP2'
+  | 'LOCKED_TP3';
 export type MarketBias = 'BULLISH' | 'BEARISH' | 'NEUTRAL';
 export type TradingSession = 'ASIA' | 'LONDON' | 'NEW_YORK' | 'OVERLAP_LDN_NY';
 
@@ -178,6 +185,9 @@ export interface TradingSignal {
   entry: number;
   stopLoss: number;
   initialStopLoss?: number;
+  trailingStopStage?: TrailingStopStage;
+  breakevenActivatedAt?: number;
+  peakFavorablePrice?: number;
   tp1: number;
   tp2: number;
   tp3: number;
@@ -219,6 +229,7 @@ export interface LifecycleAuditEvent {
   type:
     | 'SIGNAL_CREATED'
     | 'TP_HIT'
+    | 'TRAILING_STOP_MOVED'
     | 'BREAKEVEN_LOCK'
     | 'TREND_REVERSAL_WARNING'
     | 'TREND_REVERSAL_PROFIT_EXIT'
@@ -316,6 +327,7 @@ export interface SignalResolutionReport {
     tp4HitRatePct: number;
     slHitCount: number;
     slHitRatePct: number;
+    breakevenExitCount: number;
     reversalExitCount: number;
     manualClosedCount: number;
     activePendingCount: number;
@@ -344,6 +356,7 @@ export interface NotificationEvent {
   category:
     | 'SIGNAL_NEW'
     | 'SIGNAL_TP'
+    | 'SIGNAL_BREAKEVEN'
     | 'SIGNAL_SL'
     | 'SIGNAL_REVERSAL_EXIT'
     | 'SIGNAL_REVERSAL_WARN'
