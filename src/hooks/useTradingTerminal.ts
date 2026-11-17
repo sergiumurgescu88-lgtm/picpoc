@@ -151,6 +151,8 @@ export function useTradingTerminal() {
                   pnlPips: u.pnlPips,
                   rMultiple: u.rMultiple,
                   status: u.status,
+                  reachedTargets: u.reachedTargets,
+                  resolution: u.resolution,
                 };
               })
             );

@@ -16,6 +16,7 @@ import {
   Timeframe,
   TradingSignal,
 } from '../types/trading';
+import { RSIIndicator } from './RSIIndicator';
 
 interface ChartPanelProps {
   candles: Candle[];
@@ -48,6 +49,7 @@ export function ChartPanel({
 
   const [showEma, setShowEma] = useState(true);
   const [showBollinger, setShowBollinger] = useState(false);
+  const [showRsi, setShowRsi] = useState(true);
 
   // Initialize Lightweight Charts v5 instance
   useEffect(() => {
@@ -263,6 +265,12 @@ export function ChartPanel({
         lineStyle: LineStyle.Solid,
         title: 'TP3',
       },
+      {
+        price: selectedSignal.tp4,
+        color: '#047857',
+        lineStyle: LineStyle.Solid,
+        title: 'TP4',
+      },
     ];
 
     priceLinesRef.current = linesConfig.map((cfg) =>
@@ -315,6 +323,17 @@ export function ChartPanel({
           >
             Benzi Bollinger
           </button>
+          <button
+            type="button"
+            onClick={() => setShowRsi((v) => !v)}
+            className={`px-2.5 py-1 text-xs font-medium rounded-md border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+              showRsi
+                ? 'border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                : 'border-slate-200 dark:border-[#1E2738] text-slate-500 dark:text-slate-400'
+            }`}
+          >
+            RSI (14)
+          </button>
         </div>
       </div>
 
@@ -348,6 +367,9 @@ export function ChartPanel({
         )}
         <div ref={containerRef} className="w-full h-full" />
       </div>
+
+      {/* Integrated RSI (14) Sub-Pane */}
+      {showRsi && <RSIIndicator candles={candles} isDark={isDark} timeframe={timeframe} />}
     </div>
   );
 }

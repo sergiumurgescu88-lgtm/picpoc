@@ -2,5 +2,7 @@
   "name": "AurumDesk — XAU/USD Semnale & Analiză Tehnică",
   "description": "Terminal modular și securizat pentru semnale XAU/USD (Aur) cu notificări în timp real prin WebSocket, analiză tehnică multi-timeframe și Smart Money Concepts.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

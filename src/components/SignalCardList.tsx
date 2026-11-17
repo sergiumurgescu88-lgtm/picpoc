@@ -8,6 +8,7 @@ interface SignalCardListProps {
   onSelectSignal: (id: string) => void;
   onCloseSignal: (id: string) => void;
   onLoadInCalculator?: (signal: TradingSignal) => void;
+  onOpenResolution?: () => void;
 }
 
 const STATUS_LABELS: Record<TradingSignal['status'], string> = {
@@ -15,6 +16,7 @@ const STATUS_LABELS: Record<TradingSignal['status'], string> = {
   TP1_HIT: 'TP1 Atins',
   TP2_HIT: 'TP2 Atins',
   TP3_HIT: 'TP3 Atins',
+  TP4_HIT: 'TP4 Atins',
   SL_HIT: 'SL Atins',
   CLOSED: 'Închis',
 };
@@ -25,14 +27,21 @@ export function SignalCardList({
   onSelectSignal,
   onCloseSignal,
   onLoadInCalculator,
+  onOpenResolution,
 }: SignalCardListProps) {
   const [filter, setFilter] = useState<'ALL' | 'ACTIVE' | 'CLOSED'>('ALL');
 
   const filtered = signals.filter((s) => {
-    if (filter === 'ACTIVE') return s.status === 'ACTIVE' || s.status === 'TP1_HIT' || s.status === 'TP2_HIT';
-    if (filter === 'CLOSED') return s.status === 'TP3_HIT' || s.status === 'SL_HIT' || s.status === 'CLOSED';
+    const isOpen = !s.closedAt && s.status !== 'TP4_HIT' && s.status !== 'SL_HIT' && s.status !== 'CLOSED';
+    if (filter === 'ACTIVE') return isOpen;
+    if (filter === 'CLOSED') return !isOpen;
     return true;
   });
+
+  const longCount = signals.filter((s) => s.direction === 'BUY').length;
+  const shortCount = signals.filter((s) => s.direction === 'SELL').length;
+  const wonCount = signals.filter((s) => s.resolution === 'WON').length;
+  const lostCount = signals.filter((s) => s.resolution === 'LOST').length;
 
   return (
     <div className="rounded-xl border border-slate-200 dark:border-[#1C2331] bg-white dark:bg-[#0D111A] flex flex-col">
@@ -71,6 +80,36 @@ export function SignalCardList({
         </div>
       </div>
 
+      {/* Compact Resolution Strip */}
+      <div className="px-4 py-2 border-b border-slate-100 dark:border-[#182030] flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400">
+        <div className="flex flex-wrap items-center gap-2">
+          <span>
+            Long <strong className="text-emerald-600 dark:text-emerald-400">{longCount}</strong>
+          </span>
+          <span aria-hidden="true">·</span>
+          <span>
+            Short <strong className="text-rose-600 dark:text-rose-400">{shortCount}</strong>
+          </span>
+          <span aria-hidden="true">·</span>
+          <span>
+            Câștigate <strong className="text-emerald-600 dark:text-emerald-400">{wonCount}</strong>
+          </span>
+          <span aria-hidden="true">·</span>
+          <span>
+            Pierdute <strong className="text-rose-600 dark:text-rose-400">{lostCount}</strong>
+          </span>
+        </div>
+        {onOpenResolution && (
+          <button
+            type="button"
+            onClick={onOpenResolution}
+            className="font-sans font-semibold text-amber-600 dark:text-amber-400 hover:underline cursor-pointer whitespace-nowrap shrink-0"
+          >
+            Audit Rezoluție →
+          </button>
+        )}
+      </div>
+
       {/* Signal List */}
       <div className="divide-y divide-slate-200 dark:divide-[#1C2331] max-h-[680px] overflow-y-auto">
         {filtered.length === 0 ? (
@@ -83,7 +122,10 @@ export function SignalCardList({
             const isBuy = sig.direction === 'BUY';
             const isPositivePnl = sig.pnlPips >= 0;
             const isOpen =
-              sig.status === 'ACTIVE' || sig.status === 'TP1_HIT' || sig.status === 'TP2_HIT';
+              !sig.closedAt &&
+              sig.status !== 'TP4_HIT' &&
+              sig.status !== 'SL_HIT' &&
+              sig.status !== 'CLOSED';
 
             return (
               <article
@@ -162,8 +204,8 @@ export function SignalCardList({
                   </div>
                 </div>
 
-                {/* Row 2: Entry / SL / TP1 / TP2 / TP3 Grid */}
-                <div className="mt-3 grid grid-cols-5 gap-2 py-2 border-y border-slate-100 dark:border-[#182030] text-[11px] font-mono tabular-nums">
+                {/* Row 2: Entry / SL / TP1 / TP2 / TP3 / TP4 Grid */}
+                <div className="mt-3 grid grid-cols-3 sm:grid-cols-6 gap-2 py-2 border-y border-slate-100 dark:border-[#182030] text-[11px] font-mono tabular-nums">
                   <div>
                     <div className="text-slate-400 dark:text-slate-500">Entry</div>
                     <div className="font-semibold text-slate-900 dark:text-white">
@@ -171,27 +213,43 @@ export function SignalCardList({
                     </div>
                   </div>
                   <div>
-                    <div className="text-slate-400 dark:text-slate-500">SL</div>
+                    <div className="text-slate-400 dark:text-slate-500">
+                      SL{sig.reachedTargets.includes('SL') ? ' ✗' : ''}
+                    </div>
                     <div className="font-semibold text-rose-600 dark:text-rose-400">
                       {sig.stopLoss.toFixed(2)}
                     </div>
                   </div>
                   <div>
-                    <div className="text-slate-400 dark:text-slate-500">TP1</div>
+                    <div className="text-slate-400 dark:text-slate-500">
+                      TP1{sig.reachedTargets.includes('TP1') ? ' ✓' : ''}
+                    </div>
                     <div className="font-semibold text-emerald-600 dark:text-emerald-400">
                       {sig.tp1.toFixed(2)}
                     </div>
                   </div>
                   <div>
-                    <div className="text-slate-400 dark:text-slate-500">TP2</div>
+                    <div className="text-slate-400 dark:text-slate-500">
+                      TP2{sig.reachedTargets.includes('TP2') ? ' ✓' : ''}
+                    </div>
                     <div className="font-semibold text-emerald-600 dark:text-emerald-400">
                       {sig.tp2.toFixed(2)}
                     </div>
                   </div>
                   <div>
-                    <div className="text-slate-400 dark:text-slate-500">TP3</div>
+                    <div className="text-slate-400 dark:text-slate-500">
+                      TP3{sig.reachedTargets.includes('TP3') ? ' ✓' : ''}
+                    </div>
                     <div className="font-semibold text-emerald-600 dark:text-emerald-400">
                       {sig.tp3.toFixed(2)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-slate-400 dark:text-slate-500">
+                      TP4{sig.reachedTargets.includes('TP4') ? ' ✓' : ''}
+                    </div>
+                    <div className="font-semibold text-emerald-600 dark:text-emerald-400">
+                      {sig.tp4.toFixed(2)}
                     </div>
                   </div>
                 </div>

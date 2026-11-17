@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Calculator } from 'lucide-react';
 import { TradingSignal } from '../types/trading';
+import { AppliedTargetLevels, ProfitTargetCalculator } from './ProfitTargetCalculator';
 
 interface RiskCalculatorPanelProps {
   signals: TradingSignal[];
@@ -52,9 +53,24 @@ export function RiskCalculatorPanel({
     setTp3(sig.tp3.toFixed(2));
   };
 
-  const calculateOnServer = async (e?: FormEvent) => {
+  const calculateOnServer = async (
+    e?: FormEvent,
+    overrides?: {
+      entryPrice: string;
+      stopLoss: string;
+      tp1: string;
+      tp2: string;
+      tp3: string;
+    }
+  ) => {
     if (e) e.preventDefault();
     setError(null);
+    const activeEntry = overrides?.entryPrice ?? entryPrice;
+    const activeSl = overrides?.stopLoss ?? stopLoss;
+    const activeTp1 = overrides?.tp1 ?? tp1;
+    const activeTp2 = overrides?.tp2 ?? tp2;
+    const activeTp3 = overrides?.tp3 ?? tp3;
+
     try {
       const res = await fetch('/api/risk/calculate', {
         method: 'POST',
@@ -62,11 +78,11 @@ export function RiskCalculatorPanel({
         body: JSON.stringify({
           accountBalance: Number(accountBalance),
           riskPercent: Number(riskPercent),
-          entryPrice: Number(entryPrice),
-          stopLoss: Number(stopLoss),
-          tp1: tp1 ? Number(tp1) : undefined,
-          tp2: tp2 ? Number(tp2) : undefined,
-          tp3: tp3 ? Number(tp3) : undefined,
+          entryPrice: Number(activeEntry),
+          stopLoss: Number(activeSl),
+          tp1: activeTp1 ? Number(activeTp1) : undefined,
+          tp2: activeTp2 ? Number(activeTp2) : undefined,
+          tp3: activeTp3 ? Number(activeTp3) : undefined,
         }),
       });
       const data = (await res.json()) as RiskCalcResult & { error?: string };
@@ -80,17 +96,35 @@ export function RiskCalculatorPanel({
     }
   };
 
+  const handleApplyTargetLevels = (levels: AppliedTargetLevels) => {
+    const next = {
+      entryPrice: levels.entry.toFixed(2),
+      stopLoss: levels.stopLoss.toFixed(2),
+      tp1: levels.tp1.toFixed(2),
+      tp2: levels.tp2.toFixed(2),
+      tp3: levels.tp3.toFixed(2),
+    };
+    setEntryPrice(next.entryPrice);
+    setStopLoss(next.stopLoss);
+    setTp1(next.tp1);
+    setTp2(next.tp2);
+    setTp3(next.tp3);
+    void calculateOnServer(undefined, next);
+  };
+
   useEffect(() => {
     void calculateOnServer();
   }, [selectedSignal?.id]);
 
-  // Signal Journal KPI summary
+  // Signal Journal KPI summary synced with signal resolution model
   const totalSignals = signals.length;
-  const tpHits = signals.filter((s) => s.status.startsWith('TP')).length;
-  const slHits = signals.filter((s) => s.status === 'SL_HIT').length;
+  const tpHits = signals.filter((s) => s.resolution === 'WON').length;
+  const slHits = signals.filter((s) => s.resolution === 'LOST').length;
   const resolved = tpHits + slHits;
   const winRate = resolved > 0 ? Math.round((tpHits / resolved) * 100) : 0;
-  const totalR = signals.reduce((acc, s) => acc + s.rMultiple, 0);
+  const totalR = signals
+    .filter((s) => s.resolution !== 'ACTIVE')
+    .reduce((acc, s) => acc + s.rMultiple, 0);
 
   return (
     <div className="space-y-6">
@@ -126,6 +160,16 @@ export function RiskCalculatorPanel({
           </div>
         </div>
       </div>
+
+      {/* Automated R:R Profit Target & Stop-Loss Calculator */}
+      <ProfitTargetCalculator
+        currentPrice={currentPrice}
+        selectedSignalEntry={selectedSignal?.entry ?? null}
+        selectedSignalDirection={selectedSignal?.direction ?? null}
+        accountBalance={Number(accountBalance) || 10000}
+        riskPercent={Number(riskPercent) || 1}
+        onApplyLevels={handleApplyTargetLevels}
+      />
 
       {/* Calculator + Signal History Table */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -272,6 +316,7 @@ export function RiskCalculatorPanel({
                   <th className="py-2.5 px-4 text-right font-medium">Entry</th>
                   <th className="py-2.5 px-4 text-right font-medium">SL</th>
                   <th className="py-2.5 px-4 text-right font-medium">TP2</th>
+                  <th className="py-2.5 px-4 text-right font-medium">TP4</th>
                   <th className="py-2.5 px-4 text-right font-medium">Rezultat</th>
                 </tr>
               </thead>
@@ -299,6 +344,9 @@ export function RiskCalculatorPanel({
                     </td>
                     <td className="py-2.5 px-4 text-right text-emerald-600 dark:text-emerald-400">
                       {sig.tp2.toFixed(2)}
+                    </td>
+                    <td className="py-2.5 px-4 text-right text-emerald-600 dark:text-emerald-400">
+                      {sig.tp4.toFixed(2)}
                     </td>
                     <td
                       className={`py-2.5 px-4 text-right font-semibold ${

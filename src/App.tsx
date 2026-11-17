@@ -1,11 +1,16 @@
 import { useEffect, useState } from 'react';
 import { AlertsSecurityView } from './components/AlertsSecurityView';
 import { ChartPanel } from './components/ChartPanel';
+import { CorrelationMatrix } from './components/CorrelationMatrix';
 import { ActiveTab, Header } from './components/Header';
+import { MarketNewsFeed } from './components/MarketNewsFeed';
+import { MarketSentimentIndicator } from './components/MarketSentimentIndicator';
 import { NotificationToastStack } from './components/NotificationToastStack';
 import { RiskCalculatorPanel } from './components/RiskCalculatorPanel';
 import { SignalCardList } from './components/SignalCardList';
+import { SignalResolutionPanel } from './components/SignalResolutionPanel';
 import { TechnicalAnalysisPanel } from './components/TechnicalAnalysisPanel';
+import { VolatilityHeatmap } from './components/VolatilityHeatmap';
 import { WorkspaceToolbar } from './components/WorkspaceToolbar';
 import { useTradingTerminal } from './hooks/useTradingTerminal';
 
@@ -105,10 +110,13 @@ export default function App() {
                   isLoading={isLoadingSnapshot}
                   sourceDetail={tick?.sourceDetail}
                 />
+                <VolatilityHeatmap isDark={isDark} />
+                <CorrelationMatrix isDark={isDark} />
                 <TechnicalAnalysisPanel analysis={analysis} compact />
               </div>
 
-              <div className="xl:col-span-4">
+              <div className="xl:col-span-4 space-y-6">
+                <MarketSentimentIndicator timeframe={timeframe} />
                 <SignalCardList
                   signals={signals}
                   selectedSignalId={selectedSignal?.id ?? null}
@@ -118,13 +126,26 @@ export default function App() {
                     setSelectedSignalId(sig.id);
                     setActiveTab('risk');
                   }}
+                  onOpenResolution={() => setActiveTab('resolution')}
                 />
+                <MarketNewsFeed />
               </div>
             </div>
           </div>
         )}
 
         {activeTab === 'analysis' && <TechnicalAnalysisPanel analysis={analysis} />}
+
+        {activeTab === 'resolution' && (
+          <SignalResolutionPanel
+            signals={signals}
+            isDark={isDark}
+            onInspectSignal={(id) => {
+              setSelectedSignalId(id);
+              setActiveTab('terminal');
+            }}
+          />
+        )}
 
         {activeTab === 'risk' && (
           <RiskCalculatorPanel

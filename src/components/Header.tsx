@@ -1,6 +1,6 @@
 import { Loader2, Radar } from 'lucide-react';
 
-export type ActiveTab = 'terminal' | 'analysis' | 'risk' | 'alerts';
+export type ActiveTab = 'terminal' | 'analysis' | 'resolution' | 'risk' | 'alerts';
 
 interface HeaderProps {
   activeTab: ActiveTab;
@@ -12,6 +12,7 @@ interface HeaderProps {
 const NAV_ITEMS: { id: ActiveTab; label: string }[] = [
   { id: 'terminal', label: 'Terminal Live' },
   { id: 'analysis', label: 'Analiză Tehnică' },
+  { id: 'resolution', label: 'Rezoluție Semnale' },
   { id: 'risk', label: 'Jurnal & Risc' },
   { id: 'alerts', label: 'Alerte & Securitate' },
 ];

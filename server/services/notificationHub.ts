@@ -203,6 +203,8 @@ export class NotificationHub {
             pnlPips: s.pnlPips,
             rMultiple: s.rMultiple,
             status: s.status,
+            reachedTargets: s.reachedTargets,
+            resolution: s.resolution,
           })),
         },
       });

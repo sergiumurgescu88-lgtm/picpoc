@@ -44,6 +44,7 @@ export function WorkspaceToolbar({
   onQuickAddPriceAlert,
 }: WorkspaceToolbarProps) {
   const isPositive = (tick?.change24h ?? 0) >= 0;
+  const isOpenDeltaPositive = (tick?.openDelta ?? 0) >= 0;
 
   const [triggerMode, setTriggerMode] = useState<'PRICE_ABOVE' | 'PRICE_BELOW'>('PRICE_ABOVE');
   const [priceInput, setPriceInput] = useState<string>('');
@@ -89,7 +90,7 @@ export function WorkspaceToolbar({
       <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-4">
         {/* Left: Live XAU/USD Market Quote & Session Telemetry */}
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-          <div className="flex items-baseline gap-3">
+          <div className="flex flex-wrap items-baseline gap-3">
             <span className="font-display text-sm font-bold text-slate-900 dark:text-white tracking-tight">
               XAU/USD
             </span>
@@ -97,17 +98,34 @@ export function WorkspaceToolbar({
               {tick ? tick.mid.toFixed(2) : '----.--'}
             </span>
             {tick && (
-              <span
-                className={`font-mono text-xs font-semibold tabular-nums ${
-                  isPositive
-                    ? 'text-emerald-600 dark:text-emerald-400'
-                    : 'text-rose-600 dark:text-rose-400'
-                }`}
-              >
-                {isPositive ? '+' : ''}
-                {tick.change24h.toFixed(2)} ({isPositive ? '+' : ''}
-                {tick.change24hPct.toFixed(2)}%)
-              </span>
+              <>
+                <span
+                  className={`font-mono text-xs font-semibold tabular-nums ${
+                    isOpenDeltaPositive
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : 'text-rose-600 dark:text-rose-400'
+                  }`}
+                  title={`Price Delta față de deschiderea pieței (${tick.marketOpen.toFixed(2)} USD)`}
+                >
+                  Price Delta {isOpenDeltaPositive ? '▲ +' : '▼ '}
+                  {tick.openDeltaPct.toFixed(2)}% ({isOpenDeltaPositive ? '+' : ''}
+                  {tick.openDelta.toFixed(2)})
+                </span>
+                <span className="text-slate-300 dark:text-slate-700" aria-hidden="true">
+                  ·
+                </span>
+                <span
+                  className={`font-mono text-xs font-medium tabular-nums ${
+                    isPositive
+                      ? 'text-emerald-600/80 dark:text-emerald-400/80'
+                      : 'text-rose-600/80 dark:text-rose-400/80'
+                  }`}
+                  title="Variație 24h"
+                >
+                  24h {isPositive ? '+' : ''}
+                  {tick.change24hPct.toFixed(2)}%
+                </span>
+              </>
             )}
           </div>
 

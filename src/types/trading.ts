@@ -1,6 +1,15 @@
 export type Timeframe = 'M5' | 'M15' | 'H1' | 'H4' | 'D1';
 export type SignalDirection = 'BUY' | 'SELL';
-export type SignalStatus = 'ACTIVE' | 'TP1_HIT' | 'TP2_HIT' | 'TP3_HIT' | 'SL_HIT' | 'CLOSED';
+export type SignalStatus =
+  | 'ACTIVE'
+  | 'TP1_HIT'
+  | 'TP2_HIT'
+  | 'TP3_HIT'
+  | 'TP4_HIT'
+  | 'SL_HIT'
+  | 'CLOSED';
+export type TargetMilestone = 'TP1' | 'TP2' | 'TP3' | 'TP4' | 'SL';
+export type SignalResolution = 'WON' | 'LOST' | 'ACTIVE';
 export type MarketBias = 'BULLISH' | 'BEARISH' | 'NEUTRAL';
 export type TradingSession = 'ASIA' | 'LONDON' | 'NEW_YORK' | 'OVERLAP_LDN_NY';
 
@@ -19,6 +28,9 @@ export interface MarketTick {
   ask: number;
   mid: number;
   spread: number;
+  marketOpen: number;
+  openDelta: number;
+  openDeltaPct: number;
   change24h: number;
   change24hPct: number;
   high24h: number;
@@ -160,11 +172,14 @@ export interface TradingSignal {
   tp1: number;
   tp2: number;
   tp3: number;
+  tp4: number;
   riskReward: number;
   confidence: number;
   currentPrice: number;
   pnlPips: number;
   rMultiple: number;
+  reachedTargets: TargetMilestone[];
+  resolution: SignalResolution;
   setupType: string;
   reasons: string[];
   invalidation: string;
@@ -177,6 +192,86 @@ export interface TradingSignal {
   createdAt: number;
   updatedAt: number;
   closedAt?: number;
+}
+
+export interface DirectionBreakdown {
+  total: number;
+  won: number;
+  lost: number;
+  active: number;
+  winRatePct: number;
+  netPips: number;
+  netR: number;
+}
+
+export interface TimeframeResolutionRow {
+  timeframe: Timeframe;
+  total: number;
+  longCount: number;
+  shortCount: number;
+  won: number;
+  lost: number;
+  active: number;
+  winRatePct: number;
+  netPips: number;
+  netR: number;
+}
+
+export interface EquityCurvePoint {
+  index: number;
+  signalId: string;
+  direction: SignalDirection;
+  timeframe: Timeframe;
+  status: SignalStatus;
+  resolution: 'WON' | 'LOST';
+  tradeR: number;
+  tradePips: number;
+  cumulativeR: number;
+  cumulativePips: number;
+  timestamp: number;
+  setupType: string;
+}
+
+export interface SignalResolutionReport {
+  symbol: string;
+  generatedAt: number;
+  overview: {
+    totalSignals: number;
+    resolvedCount: number;
+    activePendingCount: number;
+    openRunningCount: number;
+    wonCount: number;
+    lostCount: number;
+    winRatePct: number;
+    netPips: number;
+    netR: number;
+    avgWinR: number;
+    avgLossR: number;
+    profitFactor: number;
+    expectancyR: number;
+    avgDurationMinutes: number;
+  };
+  byDirection: {
+    long: DirectionBreakdown;
+    short: DirectionBreakdown;
+  };
+  milestones: {
+    tp1HitCount: number;
+    tp1HitRatePct: number;
+    tp2HitCount: number;
+    tp2HitRatePct: number;
+    tp3HitCount: number;
+    tp3HitRatePct: number;
+    tp4HitCount: number;
+    tp4HitRatePct: number;
+    slHitCount: number;
+    slHitRatePct: number;
+    manualClosedCount: number;
+    activePendingCount: number;
+  };
+  byTimeframe: TimeframeResolutionRow[];
+  equityCurve: EquityCurvePoint[];
+  signals: TradingSignal[];
 }
 
 export interface AlertRule {

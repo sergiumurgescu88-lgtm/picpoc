@@ -3,7 +3,9 @@ import {
   Candle,
   MarketTick,
   NotificationEvent,
+  SignalResolution,
   SignalStatus,
+  TargetMilestone,
   TechnicalAnalysisReport,
   Timeframe,
   TradingSignal,
@@ -33,6 +35,8 @@ export type WsIncomingMessage =
           pnlPips: number;
           rMultiple: number;
           status: SignalStatus;
+          reachedTargets: TargetMilestone[];
+          resolution: SignalResolution;
         }[];
       };
     }

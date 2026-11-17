@@ -54,7 +54,9 @@ export class MarketFeedService {
       this.candlesByTf.set(tf, this.generateAnchoredHistory(tf, 160, 2635.2, nowSec));
     }
     const m15 = this.candlesByTf.get('M15')!;
+    const d1 = this.candlesByTf.get('D1')!;
     const last = m15[m15.length - 1];
+    const marketOpen = round2(d1[d1.length - 1]?.open ?? this.anchorOpen24h);
     const spread = 0.24;
     this.currentTick = {
       symbol: CONFIG.SYMBOL,
@@ -62,6 +64,9 @@ export class MarketFeedService {
       ask: round2(last.close + spread / 2),
       mid: round2(last.close),
       spread,
+      marketOpen,
+      openDelta: round2(last.close - marketOpen),
+      openDeltaPct: round2(((last.close - marketOpen) / marketOpen) * 100),
       change24h: round2(last.close - this.anchorOpen24h),
       change24hPct: round2(((last.close - this.anchorOpen24h) / this.anchorOpen24h) * 100),
       high24h: this.high24h,
@@ -357,12 +362,20 @@ export class MarketFeedService {
     if (mid > this.high24h) this.high24h = round2(mid);
     if (mid < this.low24h) this.low24h = round2(mid);
 
+    const d1 = this.candlesByTf.get('D1');
+    const marketOpen = round2(d1 && d1.length > 0 ? d1[d1.length - 1].open : this.anchorOpen24h);
+    const openDelta = round2(mid - marketOpen);
+    const openDeltaPct = round2((openDelta / Math.max(1, marketOpen)) * 100);
+
     this.currentTick = {
       symbol: CONFIG.SYMBOL,
       bid: round2(mid - spread / 2),
       ask: round2(mid + spread / 2),
       mid: round2(mid),
       spread,
+      marketOpen,
+      openDelta,
+      openDeltaPct,
       change24h: round2(mid - this.anchorOpen24h),
       change24hPct: round2(((mid - this.anchorOpen24h) / this.anchorOpen24h) * 100),
       high24h: this.high24h,
