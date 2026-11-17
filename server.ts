@@ -7,6 +7,7 @@ import { WebSocketServer } from 'ws';
 import { CONFIG } from './server/config/env.js';
 import { errorHandler, securityHeaders } from './server/middleware/security.js';
 import { createApiRouter } from './server/routes/api.js';
+import { CTraderBrokerService } from './server/services/ctraderService.js';
 import { MarketFeedService } from './server/services/marketFeed.js';
 import { NotificationHub } from './server/services/notificationHub.js';
 import { SignalGeneratorEngine } from './server/engine/signalGenerator.js';
@@ -38,8 +39,12 @@ async function bootstrapServer() {
   const notificationHub = new NotificationHub(wss, marketFeed, signalEngine);
   notificationHub.initialize();
 
+  const brokerService = new CTraderBrokerService();
+  // Connect asynchronously so port 3000 binds immediately without waiting on external handshake
+  void brokerService.initialize();
+
   // Mount secured REST API
-  app.use('/api', createApiRouter(marketFeed, signalEngine, notificationHub));
+  app.use('/api', createApiRouter(marketFeed, signalEngine, notificationHub, brokerService));
 
   // Vite middleware in dev, static assets in production
   if (CONFIG.NODE_ENV !== 'production') {
@@ -64,6 +69,7 @@ async function bootstrapServer() {
   });
 
   const shutdown = () => {
+    brokerService.dispose();
     notificationHub.dispose();
     wss.close();
     server.close(() => process.exit(0));

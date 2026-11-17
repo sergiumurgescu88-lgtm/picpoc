@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { CONFIG, Timeframe } from '../config/env.js';
 import {
   apiRateLimiter,
+  BrokerConnectSchema,
+  BrokerOrderSchema,
   CreateAlertSchema,
   RiskCalcSchema,
   scanRateLimiter,
@@ -12,6 +14,7 @@ import {
   validateQuery,
 } from '../middleware/security.js';
 import { CorrelationService } from '../services/correlationService.js';
+import { CTraderBrokerService } from '../services/ctraderService.js';
 import { MarketFeedService } from '../services/marketFeed.js';
 import { MarketNewsService, NewsServiceError } from '../services/newsService.js';
 import { NotificationHub } from '../services/notificationHub.js';
@@ -24,7 +27,8 @@ const SnapshotQuerySchema = z.object({
 export function createApiRouter(
   marketFeed: MarketFeedService,
   signalEngine: SignalGeneratorEngine,
-  notificationHub: NotificationHub
+  notificationHub: NotificationHub,
+  brokerService?: CTraderBrokerService
 ): Router {
   const router = Router();
   const newsService = new MarketNewsService();
@@ -359,6 +363,107 @@ export function createApiRouter(
 
   router.get('/security/audit', (_req: Request, res: Response) => {
     res.json(notificationHub.getSecurityAudit());
+  });
+
+  // Server-side cTrader / Pepperstone Demo Broker Proxy Routes (never exposes tokens/secrets)
+  router.get('/broker/status', (_req: Request, res: Response) => {
+    if (!brokerService) {
+      res.status(503).json({ error: 'Serviciul broker nu este inițializat.' });
+      return;
+    }
+    res.json(brokerService.getPublicStatus());
+  });
+
+  router.post(
+    '/broker/connect',
+    validateBody(BrokerConnectSchema),
+    async (req: Request, res: Response) => {
+      if (!brokerService) {
+        res.status(503).json({ error: 'Serviciul broker nu este inițializat.' });
+        return;
+      }
+      try {
+        const body = req.body as { ctidTraderAccountId?: number };
+        const status = await brokerService.connectAndAuthenticate(body.ctidTraderAccountId);
+        res.json(status);
+      } catch (err) {
+        res.status(502).json({
+          error: err instanceof Error ? err.message : 'Conectarea cTrader Demo a eșuat.',
+          status: brokerService.getPublicStatus(),
+        });
+      }
+    }
+  );
+
+  router.post('/broker/sync', async (_req: Request, res: Response) => {
+    if (!brokerService) {
+      res.status(503).json({ error: 'Serviciul broker nu este inițializat.' });
+      return;
+    }
+    try {
+      const status = await brokerService.syncAccountState();
+      res.json(status);
+    } catch (err) {
+      res.status(502).json({
+        error: err instanceof Error ? err.message : 'Sincronizarea contului a eșuat.',
+      });
+    }
+  });
+
+  router.post('/broker/refresh-token', async (_req: Request, res: Response) => {
+    if (!brokerService) {
+      res.status(503).json({ error: 'Serviciul broker nu este inițializat.' });
+      return;
+    }
+    try {
+      const refreshed = await brokerService.refreshAccessToken();
+      const status = await brokerService.connectAndAuthenticate();
+      res.json({ refreshed, status });
+    } catch (err) {
+      res.status(502).json({
+        error: err instanceof Error ? err.message : 'Reînnoirea tokenului OAuth a eșuat.',
+      });
+    }
+  });
+
+  router.post(
+    '/broker/order',
+    validateBody(BrokerOrderSchema),
+    async (req: Request, res: Response) => {
+      if (!brokerService) {
+        res.status(503).json({ error: 'Serviciul broker nu este inițializat.' });
+        return;
+      }
+      try {
+        const body = req.body as z.infer<typeof BrokerOrderSchema>;
+        const execution = await brokerService.placeDemoOrder(body);
+        res.status(201).json({ execution, status: brokerService.getPublicStatus() });
+      } catch (err) {
+        res.status(400).json({
+          error: err instanceof Error ? err.message : 'Ordinul demo nu a putut fi executat.',
+        });
+      }
+    }
+  );
+
+  router.post('/broker/positions/:positionId/close', async (req: Request, res: Response) => {
+    if (!brokerService) {
+      res.status(503).json({ error: 'Serviciul broker nu este inițializat.' });
+      return;
+    }
+    const positionId = Number(req.params.positionId);
+    if (!Number.isInteger(positionId) || positionId <= 0) {
+      res.status(400).json({ error: 'ID poziție invalid.' });
+      return;
+    }
+    try {
+      const execution = await brokerService.closeDemoPosition(positionId);
+      res.json({ execution, status: brokerService.getPublicStatus() });
+    } catch (err) {
+      res.status(400).json({
+        error: err instanceof Error ? err.message : 'Poziția nu a putut fi închisă.',
+      });
+    }
   });
 
   return router;

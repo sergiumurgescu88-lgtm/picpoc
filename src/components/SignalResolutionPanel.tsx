@@ -25,6 +25,7 @@ interface SignalResolutionPanelProps {
 
 type StatusFilter = 'ALL' | 'WON' | 'LOST' | 'TP4' | 'ACTIVE';
 type DirectionFilter = 'ALL' | 'BUY' | 'SELL';
+type EquityMetric = 'R' | 'PIPS' | 'USD';
 
 const STATUS_LABELS: Record<TradingSignal['status'], string> = {
   ACTIVE: 'Activ (În așteptare)',
@@ -45,6 +46,14 @@ function formatDuration(startMs: number, endMs?: number): string {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
+function formatMetricValue(val: number, metric: EquityMetric, showPlus = true): string {
+  const sign = val > 0 && showPlus ? '+' : val < 0 ? '-' : '';
+  const abs = Math.abs(val);
+  if (metric === 'R') return `${sign}${abs.toFixed(2)}R`;
+  if (metric === 'PIPS') return `${sign}${abs.toFixed(1)}p`;
+  return `${sign}$${abs.toFixed(2)}`;
+}
+
 export function SignalResolutionPanel({
   signals,
   isDark,
@@ -58,6 +67,7 @@ export function SignalResolutionPanel({
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [directionFilter, setDirectionFilter] = useState<DirectionFilter>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [equityMetric, setEquityMetric] = useState<EquityMetric>('R');
 
   const chartContainerRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -109,7 +119,7 @@ export function SignalResolutionPanel({
     return () => ro.disconnect();
   }, []);
 
-  // Draw D3 Cumulative R-Multiple Equity Curve
+  // Draw D3 Time-Based Dual-Pane Equity Curve (Total Profit + High-Water Mark + Underwater Drawdown)
   useEffect(() => {
     const svgEl = svgRef.current;
     if (!svgEl || !report || report.equityCurve.length === 0) return;
@@ -117,138 +127,286 @@ export function SignalResolutionPanel({
     const svg = d3.select(svgEl);
     svg.selectAll('*').remove();
 
-    const points = report.equityCurve;
-    const margin = { top: 18, right: 16, bottom: 26, left: 46 };
+    const rawPoints = report.equityCurve;
+    const getCum = (p: EquityCurvePoint): number =>
+      equityMetric === 'R' ? p.cumulativeR : p.cumulativePips;
+    const getPeak = (p: EquityCurvePoint): number =>
+      equityMetric === 'R' ? p.peakR : p.peakPips;
+    const getDd = (p: EquityCurvePoint): number =>
+      equityMetric === 'R' ? p.drawdownR : p.drawdownPips;
+
+    // Ensure strictly monotonic timestamps for clean time-scale rendering
+    const plotPoints = rawPoints.map((p, i) => {
+      const prevTs = i > 0 ? rawPoints[i - 1].timestamp : p.timestamp - 60_000;
+      const safeTs = i > 0 && p.timestamp <= prevTs ? prevTs + 60_000 : p.timestamp;
+      return {
+        ...p,
+        plotDate: new Date(safeTs),
+        val: getCum(p),
+        peakVal: getPeak(p),
+        ddVal: getDd(p),
+      };
+    });
+
+    const firstTs = plotPoints[0].plotDate.getTime();
+    const lastTs = plotPoints[plotPoints.length - 1].plotDate.getTime();
+    const originTs = firstTs - Math.max(3_600_000, Math.round((lastTs - firstTs) * 0.06));
+    const originNode = {
+      plotDate: new Date(originTs),
+      val: 0,
+      peakVal: 0,
+      ddVal: 0,
+    };
+
+    const fullSeries = [
+      originNode,
+      ...plotPoints.map((p) => ({
+        plotDate: p.plotDate,
+        val: p.val,
+        peakVal: p.peakVal,
+        ddVal: p.ddVal,
+      })),
+    ];
+
+    const margin = { top: 14, right: 16, bottom: 26, left: 54 };
     const totalWidth = Math.max(320, chartWidth);
-    const totalHeight = 220;
+    const totalHeight = 296;
     const width = totalWidth - margin.left - margin.right;
-    const height = totalHeight - margin.top - margin.bottom;
+
+    const equityTop = 0;
+    const equityHeight = 166;
+    const paneGap = 24;
+    const ddTop = equityTop + equityHeight + paneGap;
+    const ddHeight = totalHeight - margin.top - margin.bottom - ddTop;
 
     svg.attr('viewBox', `0 0 ${totalWidth} ${totalHeight}`);
-
     const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
-    const xExtentMax = Math.max(2, points.length);
-    const xScale = d3.scaleLinear().domain([0, xExtentMax]).range([0, width]);
+    const xScale = d3
+      .scaleTime()
+      .domain([originNode.plotDate, plotPoints[plotPoints.length - 1].plotDate])
+      .range([0, width]);
 
-    const rValues = [0, ...points.map((p) => p.cumulativeR)];
-    const minR = Math.min(...rValues);
-    const maxR = Math.max(...rValues);
-    const pad = Math.max(1, (maxR - minR) * 0.15);
-    const yScale = d3
+    const eqValues = [0, ...plotPoints.flatMap((p) => [p.val, p.peakVal])];
+    const minEq = Math.min(...eqValues);
+    const maxEq = Math.max(...eqValues);
+    const eqPad = Math.max(equityMetric === 'R' ? 0.6 : 25, (maxEq - minEq) * 0.16);
+    const yEqScale = d3
       .scaleLinear()
-      .domain([Math.min(0, minR - pad), Math.max(1, maxR + pad)])
+      .domain([Math.min(0, minEq - eqPad), Math.max(equityMetric === 'R' ? 1 : 40, maxEq + eqPad)])
       .nice()
-      .range([height, 0]);
+      .range([equityTop + equityHeight, equityTop]);
 
-    // Gridlines
-    const yGrid = d3
-      .axisLeft(yScale)
-      .ticks(5)
-      .tickSize(-width)
-      .tickFormat(() => '');
+    const minDd = Math.min(0, ...plotPoints.map((p) => p.ddVal));
+    const ddFloor = minDd < 0 ? minDd * 1.2 : equityMetric === 'R' ? -1 : -30;
+    const yDdScale = d3
+      .scaleLinear()
+      .domain([ddFloor, 0])
+      .nice()
+      .range([ddTop + ddHeight, ddTop]);
+
+    const tickFormatter = (val: d3.NumberValue) => {
+      const n = Number(val);
+      if (equityMetric === 'R') return `${n > 0 ? '+' : ''}${n.toFixed(1)}R`;
+      if (equityMetric === 'PIPS') return `${n > 0 ? '+' : ''}${Math.round(n)}p`;
+      return `${n > 0 ? '+' : n < 0 ? '-' : ''}$${Math.abs(Math.round(n))}`;
+    };
+
+    // Upper Pane Gridlines
     g.append('g')
-      .call(yGrid)
+      .call(
+        d3
+          .axisLeft(yEqScale)
+          .ticks(4)
+          .tickSize(-width)
+          .tickFormat(() => '')
+      )
       .call((sel) => sel.select('.domain').remove())
       .selectAll('line')
       .attr('stroke', isDark ? 'rgba(148,163,184,0.1)' : 'rgba(15,23,42,0.08)');
 
-    // Zero baseline
+    // Zero Equity Baseline
     g.append('line')
       .attr('x1', 0)
       .attr('x2', width)
-      .attr('y1', yScale(0))
-      .attr('y2', yScale(0))
+      .attr('y1', yEqScale(0))
+      .attr('y2', yEqScale(0))
       .attr('stroke', isDark ? 'rgba(148,163,184,0.35)' : 'rgba(100,116,139,0.35)')
       .attr('stroke-dasharray', '4 4');
 
-    const lineSeries: { idx: number; val: number }[] = [
-      { idx: 0, val: 0 },
-      ...points.map((p) => ({ idx: p.index, val: p.cumulativeR })),
-    ];
-
-    const finalR = points[points.length - 1]?.cumulativeR ?? 0;
-    const lineColor = finalR >= 0 ? '#10B981' : '#EF4444';
+    const finalVal = plotPoints[plotPoints.length - 1]?.val ?? 0;
+    const eqColor = finalVal >= 0 ? '#10B981' : '#EF4444';
 
     const defs = svg.append('defs');
-    const gradId = `eq-grad-${isDark ? 'dark' : 'light'}`;
-    const grad = defs
+    const eqGradId = `eq-grad-${equityMetric}-${isDark ? 'dark' : 'light'}`;
+    const eqGrad = defs
       .append('linearGradient')
-      .attr('id', gradId)
+      .attr('id', eqGradId)
       .attr('x1', '0%')
       .attr('y1', '0%')
       .attr('x2', '0%')
       .attr('y2', '100%');
-    grad.append('stop').attr('offset', '0%').attr('stop-color', lineColor).attr('stop-opacity', 0.28);
-    grad.append('stop').attr('offset', '100%').attr('stop-color', lineColor).attr('stop-opacity', 0.02);
+    eqGrad.append('stop').attr('offset', '0%').attr('stop-color', eqColor).attr('stop-opacity', 0.25);
+    eqGrad.append('stop').attr('offset', '100%').attr('stop-color', eqColor).attr('stop-opacity', 0.02);
 
-    const area = d3
-      .area<{ idx: number; val: number }>()
-      .x((d) => xScale(d.idx))
-      .y0(yScale(0))
-      .y1((d) => yScale(d.val))
+    // Equity profit fill to zero
+    const eqArea = d3
+      .area<typeof originNode>()
+      .x((d) => xScale(d.plotDate))
+      .y0(yEqScale(0))
+      .y1((d) => yEqScale(d.val))
       .curve(d3.curveMonotoneX);
+    g.append('path').datum(fullSeries).attr('fill', `url(#${eqGradId})`).attr('d', eqArea);
 
-    g.append('path').datum(lineSeries).attr('fill', `url(#${gradId})`).attr('d', area);
-
-    const line = d3
-      .line<{ idx: number; val: number }>()
-      .x((d) => xScale(d.idx))
-      .y((d) => yScale(d.val))
+    // Drawdown underwater gap area between High-Water Mark (peak) and Equity line
+    const ddGapArea = d3
+      .area<typeof originNode>()
+      .x((d) => xScale(d.plotDate))
+      .y0((d) => yEqScale(d.peakVal))
+      .y1((d) => yEqScale(d.val))
       .curve(d3.curveMonotoneX);
-
     g.append('path')
-      .datum(lineSeries)
-      .attr('fill', 'none')
-      .attr('stroke', lineColor)
-      .attr('stroke-width', 2.25)
-      .attr('d', line);
+      .datum(fullSeries)
+      .attr('fill', isDark ? 'rgba(239,68,68,0.18)' : 'rgba(239,68,68,0.14)')
+      .attr('d', ddGapArea);
 
-    // Interactive trade markers
-    g.selectAll<SVGCircleElement, EquityCurvePoint>('circle.eq-dot')
-      .data(points)
+    // High-Water Mark (Peak) dashed line
+    const peakLine = d3
+      .line<typeof originNode>()
+      .x((d) => xScale(d.plotDate))
+      .y((d) => yEqScale(d.peakVal))
+      .curve(d3.curveMonotoneX);
+    g.append('path')
+      .datum(fullSeries)
+      .attr('fill', 'none')
+      .attr('stroke', '#F59E0B')
+      .attr('stroke-width', 1.25)
+      .attr('stroke-dasharray', '4 3')
+      .attr('opacity', 0.75)
+      .attr('d', peakLine);
+
+    // Main Cumulative Equity Line
+    const eqLine = d3
+      .line<typeof originNode>()
+      .x((d) => xScale(d.plotDate))
+      .y((d) => yEqScale(d.val))
+      .curve(d3.curveMonotoneX);
+    g.append('path')
+      .datum(fullSeries)
+      .attr('fill', 'none')
+      .attr('stroke', eqColor)
+      .attr('stroke-width', 2.25)
+      .attr('d', eqLine);
+
+    // Lower Drawdown Sub-Pane Label & Grid
+    g.append('text')
+      .attr('x', 0)
+      .attr('y', ddTop - 7)
+      .attr('fill', isDark ? '#94A3B8' : '#64748B')
+      .style('font-family', 'JetBrains Mono, monospace')
+      .style('font-size', '10px')
+      .style('font-weight', '600')
+      .text('DRAWDOWN');
+
+    g.append('g')
+      .call(
+        d3
+          .axisLeft(yDdScale)
+          .ticks(2)
+          .tickSize(-width)
+          .tickFormat(() => '')
+      )
+      .call((sel) => sel.select('.domain').remove())
+      .selectAll('line')
+      .attr('stroke', isDark ? 'rgba(148,163,184,0.1)' : 'rgba(15,23,42,0.08)');
+
+    g.append('line')
+      .attr('x1', 0)
+      .attr('x2', width)
+      .attr('y1', yDdScale(0))
+      .attr('y2', yDdScale(0))
+      .attr('stroke', isDark ? 'rgba(148,163,184,0.3)' : 'rgba(100,116,139,0.3)');
+
+    // Underwater Drawdown Area & Stroke
+    const ddArea = d3
+      .area<typeof originNode>()
+      .x((d) => xScale(d.plotDate))
+      .y0(yDdScale(0))
+      .y1((d) => yDdScale(d.ddVal))
+      .curve(d3.curveMonotoneX);
+    g.append('path')
+      .datum(fullSeries)
+      .attr('fill', isDark ? 'rgba(239,68,68,0.28)' : 'rgba(239,68,68,0.22)')
+      .attr('d', ddArea);
+
+    const ddLine = d3
+      .line<typeof originNode>()
+      .x((d) => xScale(d.plotDate))
+      .y((d) => yDdScale(d.ddVal))
+      .curve(d3.curveMonotoneX);
+    g.append('path')
+      .datum(fullSeries)
+      .attr('fill', 'none')
+      .attr('stroke', '#EF4444')
+      .attr('stroke-width', 1.6)
+      .attr('d', ddLine);
+
+    // Highlight Max Drawdown point if drawdown occurred
+    const maxDdPoint = plotPoints.reduce(
+      (minP, cur) => (cur.ddVal < minP.ddVal ? cur : minP),
+      plotPoints[0]
+    );
+    if (maxDdPoint && maxDdPoint.ddVal < 0) {
+      g.append('circle')
+        .attr('cx', xScale(maxDdPoint.plotDate))
+        .attr('cy', yDdScale(maxDdPoint.ddVal))
+        .attr('r', 4)
+        .attr('fill', '#EF4444')
+        .attr('stroke', isDark ? '#0D111A' : '#FFFFFF')
+        .attr('stroke-width', 1.5);
+    }
+
+    // Trade dots on Equity Curve
+    const dots = g
+      .selectAll<SVGCircleElement, (typeof plotPoints)[number]>('circle.eq-dot')
+      .data(plotPoints)
       .enter()
       .append('circle')
       .attr('class', 'eq-dot')
-      .attr('cx', (d) => xScale(d.index))
-      .attr('cy', (d) => yScale(d.cumulativeR))
-      .attr('r', 4)
+      .attr('cx', (d) => xScale(d.plotDate))
+      .attr('cy', (d) => yEqScale(d.val))
+      .attr('r', 3.5)
       .attr('fill', (d) => (d.resolution === 'WON' ? '#10B981' : '#EF4444'))
       .attr('stroke', isDark ? '#0D111A' : '#FFFFFF')
-      .attr('stroke-width', 1.5)
-      .style('cursor', 'pointer')
-      .on('mouseenter', function (event: MouseEvent, d: EquityCurvePoint) {
-        d3.select(this).attr('r', 6);
-        const rect = chartContainerRef.current?.getBoundingClientRect();
-        if (rect) {
-          setHoveredPoint({
-            point: d,
-            x: event.clientX - rect.left,
-            y: event.clientY - rect.top,
-          });
-        }
-      })
-      .on('mousemove', function (event: MouseEvent, d: EquityCurvePoint) {
-        const rect = chartContainerRef.current?.getBoundingClientRect();
-        if (rect) {
-          setHoveredPoint({
-            point: d,
-            x: event.clientX - rect.left,
-            y: event.clientY - rect.top,
-          });
-        }
-      })
-      .on('mouseleave', function () {
-        d3.select(this).attr('r', 4);
-        setHoveredPoint(null);
-      });
+      .attr('stroke-width', 1.4);
 
-    // Axes
+    // Y Axes
+    const yEqAxisG = g.append('g').call(d3.axisLeft(yEqScale).ticks(4).tickFormat(tickFormatter));
+    yEqAxisG.select('.domain').remove();
+    yEqAxisG
+      .selectAll('text')
+      .attr('fill', isDark ? '#94A3B8' : '#475569')
+      .style('font-family', 'JetBrains Mono, monospace')
+      .style('font-size', '10px');
+
+    const yDdAxisG = g.append('g').call(d3.axisLeft(yDdScale).ticks(2).tickFormat(tickFormatter));
+    yDdAxisG.select('.domain').remove();
+    yDdAxisG
+      .selectAll('text')
+      .attr('fill', isDark ? '#94A3B8' : '#475569')
+      .style('font-family', 'JetBrains Mono, monospace')
+      .style('font-size', '10px');
+
+    // Bottom Time X-Axis
+    const timeFormat = d3.timeFormat('%d.%m %H:%M');
     const xAxis = d3
       .axisBottom(xScale)
-      .ticks(Math.min(8, points.length))
-      .tickFormat((d) => `#${Number(d)}`);
-    const xAxisG = g.append('g').attr('transform', `translate(0,${height})`).call(xAxis);
+      .ticks(Math.min(5, Math.max(2, Math.floor(width / 115))))
+      .tickFormat((d) => timeFormat(d as Date));
+    const xAxisG = g
+      .append('g')
+      .attr('transform', `translate(0,${ddTop + ddHeight})`)
+      .call(xAxis);
     xAxisG.select('.domain').attr('stroke', isDark ? '#1E293B' : '#CBD5E1');
     xAxisG
       .selectAll('text')
@@ -256,18 +414,61 @@ export function SignalResolutionPanel({
       .style('font-family', 'JetBrains Mono, monospace')
       .style('font-size', '10px');
 
-    const yAxis = d3
-      .axisLeft(yScale)
-      .ticks(5)
-      .tickFormat((d) => `${Number(d) > 0 ? '+' : ''}${Number(d).toFixed(1)}R`);
-    const yAxisG = g.append('g').call(yAxis);
-    yAxisG.select('.domain').remove();
-    yAxisG
-      .selectAll('text')
-      .attr('fill', isDark ? '#94A3B8' : '#475569')
-      .style('font-family', 'JetBrains Mono, monospace')
-      .style('font-size', '10px');
-  }, [report, chartWidth, isDark]);
+    // Shared Vertical Crosshair (hidden until hover)
+    const crosshair = g
+      .append('line')
+      .attr('y1', equityTop)
+      .attr('y2', ddTop + ddHeight)
+      .attr('stroke', '#F59E0B')
+      .attr('stroke-width', 1)
+      .attr('stroke-dasharray', '3 3')
+      .style('opacity', 0)
+      .style('pointer-events', 'none');
+
+    const bisectDate = d3.bisector<(typeof plotPoints)[number], Date>((d) => d.plotDate).left;
+
+    g.append('rect')
+      .attr('x', 0)
+      .attr('y', 0)
+      .attr('width', width)
+      .attr('height', ddTop + ddHeight)
+      .attr('fill', 'transparent')
+      .style('cursor', 'crosshair')
+      .on('mousemove', function (event: MouseEvent) {
+        const [mx] = d3.pointer(event, this);
+        const hoveredDate = xScale.invert(mx);
+        const idx = bisectDate(plotPoints, hoveredDate, 1);
+        const d0 = plotPoints[idx - 1];
+        const d1 = plotPoints[idx];
+        let nearest = d0;
+        if (d1 && d0) {
+          nearest =
+            hoveredDate.getTime() - d0.plotDate.getTime() >
+            d1.plotDate.getTime() - hoveredDate.getTime()
+              ? d1
+              : d0;
+        }
+        if (!nearest) return;
+
+        const cx = xScale(nearest.plotDate);
+        crosshair.attr('x1', cx).attr('x2', cx).style('opacity', 1);
+        dots.attr('r', (d) => (d.signalId === nearest.signalId ? 6 : 3.5));
+
+        const rect = chartContainerRef.current?.getBoundingClientRect();
+        if (rect) {
+          setHoveredPoint({
+            point: nearest,
+            x: event.clientX - rect.left,
+            y: event.clientY - rect.top,
+          });
+        }
+      })
+      .on('mouseleave', () => {
+        crosshair.style('opacity', 0);
+        dots.attr('r', 3.5);
+        setHoveredPoint(null);
+      });
+  }, [report, chartWidth, isDark, equityMetric]);
 
   const filteredSignals = useMemo(() => {
     const list = report?.signals ?? [];
@@ -678,50 +879,129 @@ export function SignalResolutionPanel({
         </section>
       </div>
 
-      {/* Row 3: D3 Equity Curve + Timeframe Performance Table */}
+      {/* Row 3: D3 Equity Curve (Total Profit + Drawdown) + Timeframe Performance Table */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Equity Curve */}
+        {/* Equity Curve & Drawdown */}
         <section className="lg:col-span-7 rounded-xl border border-slate-200 dark:border-[#1C2331] bg-white dark:bg-[#0D111A] p-5 space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-100 dark:border-[#182030]">
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-[#182030]">
             <div>
               <h2 className="font-display text-sm font-semibold text-slate-900 dark:text-white">
-                Curba Randamentului Cumulat (R-Multiple)
+                Curba de Echitate, Profit Total & Drawdown
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Evoluția secvențială a semnalelor rezolvate ({report.equityCurve.length} tranzacții închise / evaluate)
+                Evoluția cumulată în timp a celor {report.equityCurve.length} semnale rezolvate
               </p>
             </div>
-            <span
-              className={`text-xs font-mono font-bold tabular-nums ${
-                overview.netR >= 0
-                  ? 'text-emerald-600 dark:text-emerald-400'
-                  : 'text-rose-600 dark:text-rose-400'
-              }`}
-            >
-              Total: {overview.netR >= 0 ? '+' : ''}
-              {overview.netR.toFixed(2)}R ({overview.netPips >= 0 ? '+' : ''}
-              {overview.netPips.toFixed(1)} pips)
-            </span>
+
+            <div className="inline-flex items-center p-0.5 rounded-lg bg-slate-100 dark:bg-[#141A26] border border-slate-200 dark:border-[#1E2738]">
+              {(
+                [
+                  { id: 'R', label: 'R-Multiple' },
+                  { id: 'PIPS', label: 'Pips' },
+                  { id: 'USD', label: 'USD (0.10L)' },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setEquityMetric(opt.id)}
+                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                    equityMetric === opt.id
+                      ? 'bg-white dark:bg-[#1F293B] text-slate-900 dark:text-white shadow-xs'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Profit Total / Peak / Max Drawdown Strip */}
+          <div className="flex flex-wrap items-center justify-between gap-4 py-1 text-xs font-mono tabular-nums">
+            <div className="flex flex-wrap items-center gap-5">
+              <div>
+                <span className="font-sans text-slate-500 dark:text-slate-400 mr-1.5">
+                  Profit Total:
+                </span>
+                <strong
+                  className={
+                    (equityMetric === 'R' ? overview.netR : overview.netPips) >= 0
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : 'text-rose-600 dark:text-rose-400'
+                  }
+                >
+                  {formatMetricValue(
+                    equityMetric === 'R' ? overview.netR : overview.netPips,
+                    equityMetric
+                  )}
+                </strong>
+              </div>
+              <div>
+                <span className="font-sans text-slate-500 dark:text-slate-400 mr-1.5">
+                  Vârf (HWM):
+                </span>
+                <strong className="text-amber-600 dark:text-amber-400">
+                  {formatMetricValue(
+                    equityMetric === 'R' ? overview.peakR : overview.peakPips,
+                    equityMetric
+                  )}
+                </strong>
+              </div>
+              <div>
+                <span className="font-sans text-slate-500 dark:text-slate-400 mr-1.5">
+                  Max Drawdown:
+                </span>
+                <strong className="text-rose-600 dark:text-rose-400">
+                  {formatMetricValue(
+                    equityMetric === 'R' ? overview.maxDrawdownR : overview.maxDrawdownPips,
+                    equityMetric,
+                    false
+                  )}
+                </strong>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 font-sans text-[11px] text-slate-500 dark:text-slate-400">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-3 h-0.5 bg-emerald-500 inline-block" />
+                Echitate
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-3 h-0.5 border-t border-dashed border-amber-500 inline-block" />
+                Vârf (HWM)
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-xs bg-rose-500/40 border border-rose-500 inline-block" />
+                Drawdown
+              </span>
+            </div>
           </div>
 
           <div ref={chartContainerRef} className="relative w-full">
             {report.equityCurve.length === 0 ? (
-              <div className="h-[220px] flex items-center justify-center text-xs text-slate-500 dark:text-slate-400">
+              <div className="h-[296px] flex items-center justify-center text-xs text-slate-500 dark:text-slate-400">
                 Nu există încă semnale rezolvate pentru trasarea curbei de echitate.
               </div>
             ) : (
               <>
-                <svg ref={svgRef} className="w-full h-[220px] block overflow-visible" />
+                <svg ref={svgRef} className="w-full h-[296px] block overflow-visible" />
                 {hoveredPoint && (
                   <div
                     className="pointer-events-none absolute z-20 rounded-lg border border-slate-200 dark:border-[#243045] bg-white/95 dark:bg-[#111622]/95 px-3 py-2 shadow-md text-[11px] font-mono tabular-nums whitespace-nowrap"
                     style={{
-                      left: Math.min(Math.max(8, hoveredPoint.x + 12), Math.max(12, chartWidth - 230)),
-                      top: Math.max(4, hoveredPoint.y - 68),
+                      left: Math.min(Math.max(8, hoveredPoint.x + 12), Math.max(12, chartWidth - 255)),
+                      top: Math.max(4, hoveredPoint.y - 84),
                     }}
                   >
                     <div className="font-semibold text-slate-900 dark:text-white">
-                      #{hoveredPoint.point.index} · {hoveredPoint.point.direction} {hoveredPoint.point.timeframe}
+                      #{hoveredPoint.point.index} · {hoveredPoint.point.direction} {hoveredPoint.point.timeframe} ·{' '}
+                      {new Date(hoveredPoint.point.timestamp).toLocaleString('ro-RO', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
                     </div>
                     <div className="font-sans text-[10px] text-slate-500 dark:text-slate-400">
                       {hoveredPoint.point.setupType}
@@ -737,9 +1017,16 @@ export function SignalResolutionPanel({
                       {hoveredPoint.point.tradeR.toFixed(2)}R ({hoveredPoint.point.tradePips >= 0 ? '+' : ''}
                       {hoveredPoint.point.tradePips.toFixed(1)}p)
                     </div>
-                    <div className="text-slate-600 dark:text-slate-300">
-                      Cumulat: {hoveredPoint.point.cumulativeR >= 0 ? '+' : ''}
-                      {hoveredPoint.point.cumulativeR.toFixed(2)}R
+                    <div className="text-slate-700 dark:text-slate-200">
+                      Profit Total: {hoveredPoint.point.cumulativeR >= 0 ? '+' : ''}
+                      {hoveredPoint.point.cumulativeR.toFixed(2)}R ({hoveredPoint.point.cumulativePips >= 0 ? '+' : ''}
+                      {hoveredPoint.point.cumulativePips.toFixed(1)}p /{' '}
+                      {hoveredPoint.point.cumulativePips >= 0 ? '+' : '-'}$
+                      {Math.abs(hoveredPoint.point.cumulativePips).toFixed(2)})
+                    </div>
+                    <div className="text-rose-600 dark:text-rose-400">
+                      Drawdown: {hoveredPoint.point.drawdownR.toFixed(2)}R (
+                      {hoveredPoint.point.drawdownPips.toFixed(1)}p)
                     </div>
                   </div>
                 )}

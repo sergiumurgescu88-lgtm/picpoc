@@ -229,6 +229,10 @@ export interface EquityCurvePoint {
   tradePips: number;
   cumulativeR: number;
   cumulativePips: number;
+  peakR: number;
+  drawdownR: number;
+  peakPips: number;
+  drawdownPips: number;
   timestamp: number;
   setupType: string;
 }
@@ -246,6 +250,12 @@ export interface SignalResolutionReport {
     winRatePct: number;
     netPips: number;
     netR: number;
+    peakR: number;
+    peakPips: number;
+    maxDrawdownR: number;
+    maxDrawdownPips: number;
+    currentDrawdownR: number;
+    currentDrawdownPips: number;
     avgWinR: number;
     avgLossR: number;
     profitFactor: number;

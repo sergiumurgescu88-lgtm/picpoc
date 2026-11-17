@@ -228,6 +228,10 @@ export interface EquityCurvePoint {
   tradePips: number;
   cumulativeR: number;
   cumulativePips: number;
+  peakR: number;
+  drawdownR: number;
+  peakPips: number;
+  drawdownPips: number;
   timestamp: number;
   setupType: string;
 }
@@ -245,6 +249,12 @@ export interface SignalResolutionReport {
     winRatePct: number;
     netPips: number;
     netR: number;
+    peakR: number;
+    peakPips: number;
+    maxDrawdownR: number;
+    maxDrawdownPips: number;
+    currentDrawdownR: number;
+    currentDrawdownPips: number;
     avgWinR: number;
     avgLossR: number;
     profitFactor: number;
@@ -308,3 +318,78 @@ export interface SecurityAuditSnapshot {
   blockedRequestsCount: number;
   lastAuditTimestamp: number;
 }
+
+export interface CTraderAccountSummary {
+  ctidTraderAccountId: number;
+  traderLogin: number;
+  isLive: boolean;
+  brokerTitle: string;
+  depositCurrency: string;
+  balance: number;
+  leverage: number;
+}
+
+export interface CTraderOpenPosition {
+  positionId: number;
+  symbolId: number;
+  symbolName: string;
+  tradeSide: 'BUY' | 'SELL';
+  lots: number;
+  entryPrice: number;
+  stopLoss?: number;
+  takeProfit?: number;
+  swap: number;
+  commission: number;
+  openTimestamp: number;
+}
+
+export interface CTraderExecutionRecord {
+  id: string;
+  executionType: string;
+  positionId?: number;
+  orderId?: number;
+  tradeSide?: 'BUY' | 'SELL';
+  lots?: number;
+  price?: number;
+  status: string;
+  errorCode?: string;
+  timestamp: number;
+}
+
+export interface BrokerPublicStatus {
+  configured: boolean;
+  environment: 'demo' | 'live';
+  connectionState: 'DISCONNECTED' | 'CONNECTING' | 'AUTHENTICATED' | 'ERROR';
+  lastError: string | null;
+  lastSyncAt: number | null;
+  tokenExpiresInDays: number;
+  oauthAuthorizeUrl: string | null;
+  accounts: CTraderAccountSummary[];
+  activeAccount: {
+    ctidTraderAccountId: number;
+    traderLogin: number;
+    brokerTitle: string;
+    isLive: boolean;
+    currency: string;
+    balance: number;
+    leverage: number;
+    accountType: string;
+    marginUsed: number;
+    freeMargin: number;
+  } | null;
+  xauSymbol: {
+    symbolId: number;
+    symbolName: string;
+    digits: number;
+    lotSizeUnits: number;
+    minLots: number;
+    stepLots: number;
+    bid: number | null;
+    ask: number | null;
+    spread: number | null;
+    spotUpdatedAt: number | null;
+  } | null;
+  openPositions: CTraderOpenPosition[];
+  recentExecutions: CTraderExecutionRecord[];
+}
+

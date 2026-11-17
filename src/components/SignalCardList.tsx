@@ -281,7 +281,7 @@ export function SignalCardList({
                           }}
                           className="px-3 py-1.5 text-xs font-medium rounded-md border border-slate-200 dark:border-[#243045] text-slate-700 dark:text-slate-200 hover:border-amber-500/60 transition-colors cursor-pointer"
                         >
-                          Calculează Lotaj
+                          Calculează Lotaj & Demo
                         </button>
                       )}
                       {isOpen && (

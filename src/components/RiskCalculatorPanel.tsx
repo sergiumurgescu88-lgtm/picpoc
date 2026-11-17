@@ -1,6 +1,7 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { Calculator } from 'lucide-react';
 import { TradingSignal } from '../types/trading';
+import { BrokerAccountPanel } from './BrokerAccountPanel';
 import { AppliedTargetLevels, ProfitTargetCalculator } from './ProfitTargetCalculator';
 
 interface RiskCalculatorPanelProps {
@@ -25,7 +26,9 @@ export function RiskCalculatorPanel({
   selectedSignal,
   currentPrice,
 }: RiskCalculatorPanelProps) {
-  const [accountBalance, setAccountBalance] = useState('10000');
+  const [accountBalance, setAccountBalance] = useState('1000');
+  const [accountCurrency, setAccountCurrency] = useState('EUR');
+  const [accountLeverage, setAccountLeverage] = useState(30);
   const [riskPercent, setRiskPercent] = useState('1.0');
   const [entryPrice, setEntryPrice] = useState(() =>
     selectedSignal ? selectedSignal.entry.toFixed(2) : (currentPrice ?? 2635).toFixed(2)
@@ -56,15 +59,17 @@ export function RiskCalculatorPanel({
   const calculateOnServer = async (
     e?: FormEvent,
     overrides?: {
-      entryPrice: string;
-      stopLoss: string;
-      tp1: string;
-      tp2: string;
-      tp3: string;
+      accountBalance?: string;
+      entryPrice?: string;
+      stopLoss?: string;
+      tp1?: string;
+      tp2?: string;
+      tp3?: string;
     }
   ) => {
     if (e) e.preventDefault();
     setError(null);
+    const activeBalance = overrides?.accountBalance ?? accountBalance;
     const activeEntry = overrides?.entryPrice ?? entryPrice;
     const activeSl = overrides?.stopLoss ?? stopLoss;
     const activeTp1 = overrides?.tp1 ?? tp1;
@@ -76,7 +81,7 @@ export function RiskCalculatorPanel({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          accountBalance: Number(accountBalance),
+          accountBalance: Number(activeBalance),
           riskPercent: Number(riskPercent),
           entryPrice: Number(activeEntry),
           stopLoss: Number(activeSl),
@@ -112,6 +117,17 @@ export function RiskCalculatorPanel({
     void calculateOnServer(undefined, next);
   };
 
+  const handleSyncBrokerContext = useCallback(
+    (ctx: { balance: number; currency: string; leverage: number }) => {
+      const balStr = ctx.balance.toFixed(2);
+      setAccountBalance(balStr);
+      setAccountCurrency(ctx.currency);
+      setAccountLeverage(ctx.leverage);
+      void calculateOnServer(undefined, { accountBalance: balStr });
+    },
+    []
+  );
+
   useEffect(() => {
     void calculateOnServer();
   }, [selectedSignal?.id]);
@@ -125,6 +141,18 @@ export function RiskCalculatorPanel({
   const totalR = signals
     .filter((s) => s.resolution !== 'ACTIVE')
     .reduce((acc, s) => acc + s.rMultiple, 0);
+
+  const parsedEntry = Number(entryPrice);
+  const parsedSl = Number(stopLoss);
+  const parsedTp2 = Number(tp2);
+  const suggestedSlDistance =
+    Number.isFinite(parsedEntry) && Number.isFinite(parsedSl)
+      ? Math.round(Math.abs(parsedEntry - parsedSl) * 100) / 100
+      : null;
+  const suggestedTpDistance =
+    Number.isFinite(parsedEntry) && Number.isFinite(parsedTp2)
+      ? Math.round(Math.abs(parsedTp2 - parsedEntry) * 100) / 100
+      : null;
 
   return (
     <div className="space-y-6">
@@ -161,12 +189,21 @@ export function RiskCalculatorPanel({
         </div>
       </div>
 
+      {/* Pepperstone Demo cTrader Open API Account & Execution */}
+      <BrokerAccountPanel
+        selectedSignal={selectedSignal}
+        suggestedLots={result?.recommendedLots ?? null}
+        suggestedSlDistance={suggestedSlDistance}
+        suggestedTpDistance={suggestedTpDistance}
+        onSyncAccountContext={handleSyncBrokerContext}
+      />
+
       {/* Automated R:R Profit Target & Stop-Loss Calculator */}
       <ProfitTargetCalculator
         currentPrice={currentPrice}
         selectedSignalEntry={selectedSignal?.entry ?? null}
         selectedSignalDirection={selectedSignal?.direction ?? null}
-        accountBalance={Number(accountBalance) || 10000}
+        accountBalance={Number(accountBalance) || 1000}
         riskPercent={Number(riskPercent) || 1}
         onApplyLevels={handleApplyTargetLevels}
       />
@@ -195,7 +232,9 @@ export function RiskCalculatorPanel({
 
           <div className="grid grid-cols-2 gap-3 text-xs">
             <label className="space-y-1">
-              <span className="text-slate-500 dark:text-slate-400">Capital Cont (USD)</span>
+              <span className="text-slate-500 dark:text-slate-400">
+                Capital Cont ({accountCurrency} · 1:{accountLeverage})
+              </span>
               <input
                 type="number"
                 step="100"

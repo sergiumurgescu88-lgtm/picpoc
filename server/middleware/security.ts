@@ -149,6 +149,18 @@ export const ScanRequestSchema = z.object({
   timeframe: TimeframeSchema.optional(),
 });
 
+export const BrokerConnectSchema = z.object({
+  ctidTraderAccountId: z.number().int().positive().optional(),
+});
+
+export const BrokerOrderSchema = z.object({
+  tradeSide: z.enum(['BUY', 'SELL']),
+  lots: z.number().finite().min(0.01).max(5.0),
+  stopLossDistanceUsd: z.number().finite().min(0.5).max(250).optional(),
+  takeProfitDistanceUsd: z.number().finite().min(0.5).max(500).optional(),
+  comment: z.string().max(64).transform(sanitizeText).optional(),
+});
+
 export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction): void {
   console.error('[API Error]', err instanceof Error ? err.message : 'Unknown error');
   res.status(500).json({

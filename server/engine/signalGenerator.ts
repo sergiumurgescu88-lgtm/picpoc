@@ -723,9 +723,22 @@ export class SignalGeneratorEngine {
     );
     let cumR = 0;
     let cumPips = 0;
+    let peakR = 0;
+    let peakPips = 0;
+    let maxDrawdownR = 0;
+    let maxDrawdownPips = 0;
+
     const equityCurve: EquityCurvePoint[] = chronologicalResolved.map((s, idx) => {
       cumR = round2(cumR + s.rMultiple);
       cumPips = round2(cumPips + s.pnlPips);
+      if (cumR > peakR) peakR = cumR;
+      if (cumPips > peakPips) peakPips = cumPips;
+
+      const drawdownR = round2(cumR - peakR);
+      const drawdownPips = round2(cumPips - peakPips);
+      if (drawdownR < maxDrawdownR) maxDrawdownR = drawdownR;
+      if (drawdownPips < maxDrawdownPips) maxDrawdownPips = drawdownPips;
+
       return {
         index: idx + 1,
         signalId: s.id,
@@ -737,10 +750,18 @@ export class SignalGeneratorEngine {
         tradePips: s.pnlPips,
         cumulativeR: cumR,
         cumulativePips: cumPips,
+        peakR,
+        drawdownR,
+        peakPips,
+        drawdownPips,
         timestamp: s.closedAt ?? s.updatedAt,
         setupType: s.setupType,
       };
     });
+
+    const lastPoint = equityCurve[equityCurve.length - 1];
+    const currentDrawdownR = lastPoint ? lastPoint.drawdownR : 0;
+    const currentDrawdownPips = lastPoint ? lastPoint.drawdownPips : 0;
 
     return {
       symbol: CONFIG.SYMBOL,
@@ -755,6 +776,12 @@ export class SignalGeneratorEngine {
         winRatePct,
         netPips,
         netR,
+        peakR,
+        peakPips,
+        maxDrawdownR,
+        maxDrawdownPips,
+        currentDrawdownR,
+        currentDrawdownPips,
         avgWinR,
         avgLossR,
         profitFactor,
