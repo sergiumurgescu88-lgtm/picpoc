@@ -33,9 +33,11 @@ async function bootstrapServer() {
 
   app.use((req, res, next) => {
     if (req.path === '/auth' && req.method === 'POST') {
+      console.log('[GATEKEEPER DEBUG] Body primit:', req.body);
       const { username, password } = req.body;
+      console.log('[GATEKEEPER DEBUG] User incercat:', username, 'Pass corect?', VALID_USERS[username] === password);
       if (VALID_USERS[username] && VALID_USERS[username] === password) {
-        res.setHeader('Set-Cookie', 'ssociety_auth=true; Path=/; Max-Age=2592000; HttpOnly; SameSite=Lax; Secure');
+        res.setHeader('Set-Cookie', 'ssociety_auth=true; Path=/; Max-Age=2592000; HttpOnly; SameSite=Lax');
         return res.redirect('/');
       }
       return res.redirect('/?error=1');

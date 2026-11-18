@@ -249,8 +249,8 @@ export function SignalCardList({
                       }`}
                     >
                       {isPositivePnl ? '+' : ''}
-                      {sig.pnlPips.toFixed(1)} pips ({sig.rMultiple >= 0 ? '+' : ''}
-                      {sig.rMultiple.toFixed(2)}R)
+                      {(sig.pnlPips ?? 0).toFixed(1)} pips ({sig.rMultiple >= 0 ? '+' : ''}
+                      {(sig.rMultiple ?? 0).toFixed(2)}R)
                     </div>
                   </div>
                 </div>

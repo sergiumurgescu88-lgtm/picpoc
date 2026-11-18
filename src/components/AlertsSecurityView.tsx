@@ -170,7 +170,7 @@ export function AlertsSecurityView({
                     </span>
                     {rule.threshold !== undefined && (
                       <span className="font-mono text-amber-600 dark:text-amber-400">
-                        {rule.threshold.toFixed(2)}
+                        {(rule.threshold ?? 0).toFixed(2)}
                       </span>
                     )}
                     <span className="text-slate-400">·</span>

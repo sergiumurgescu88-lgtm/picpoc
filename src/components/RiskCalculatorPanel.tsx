@@ -105,11 +105,11 @@ export function RiskCalculatorPanel({
 
   const handleApplyTargetLevels = (levels: AppliedTargetLevels) => {
     const next = {
-      entryPrice: levels.entry.toFixed(2),
-      stopLoss: levels.stopLoss.toFixed(2),
-      tp1: levels.tp1.toFixed(2),
-      tp2: levels.tp2.toFixed(2),
-      tp3: levels.tp3.toFixed(2),
+      entryPrice: (levels.entry ?? 0).toFixed(2),
+      stopLoss: (levels.stopLoss ?? 0).toFixed(2),
+      tp1: (levels.tp1 ?? 0).toFixed(2),
+      tp2: (levels.tp2 ?? 0).toFixed(2),
+      tp3: (levels.tp3 ?? 0).toFixed(2),
     };
     setEntryPrice(next.entryPrice);
     setStopLoss(next.stopLoss);
@@ -121,7 +121,7 @@ export function RiskCalculatorPanel({
 
   const handleSyncBrokerContext = useCallback(
     (ctx: { balance: number; currency: string; leverage: number }) => {
-      const balStr = ctx.balance.toFixed(2);
+      const balStr = (ctx.balance ?? 0).toFixed(2);
       setAccountBalance(balStr);
       setAccountCurrency(ctx.currency);
       setAccountLeverage(ctx.leverage);
@@ -180,7 +180,7 @@ export function RiskCalculatorPanel({
             }`}
           >
             {totalR >= 0 ? '+' : ''}
-            {totalR.toFixed(2)}R
+            {(totalR ?? 0).toFixed(2)}R
           </div>
         </div>
         <div className="rounded-xl border border-slate-200 dark:border-[#1C2331] bg-white dark:bg-[#0D111A] p-4">
@@ -312,20 +312,20 @@ export function RiskCalculatorPanel({
               <div>
                 <div className="text-slate-500 font-sans">Volum Recomandat</div>
                 <div className="text-lg font-bold text-amber-600 dark:text-amber-400">
-                  {result.recommendedLots.toFixed(2)} Loturi
+                  {(result.recommendedLots ?? 0).toFixed(2)} Loturi
                 </div>
               </div>
               <div>
                 <div className="text-slate-500 font-sans">Risc Financiar Maxim</div>
                 <div className="text-lg font-bold text-rose-600 dark:text-rose-400">
-                  -${result.riskAmountUsd.toFixed(2)} ({result.slPips} pips)
+                  -${(result.riskAmountUsd ?? 0).toFixed(2)} ({result.slPips} pips)
                 </div>
               </div>
               {result.projectedTp1 && (
                 <div>
                   <div className="text-slate-500 font-sans">Profit Estimativ TP1</div>
                   <div className="font-semibold text-emerald-600 dark:text-emerald-400">
-                    +${result.projectedTp1.rewardUsd.toFixed(2)} (1:{result.projectedTp1.rr})
+                    +${(result.projectedTp1.rewardUsd ?? 0).toFixed(2)} (1:{result.projectedTp1.rr})
                   </div>
                 </div>
               )}
@@ -397,7 +397,7 @@ export function RiskCalculatorPanel({
                       }`}
                     >
                       {sig.pnlPips >= 0 ? '+' : ''}
-                      {sig.pnlPips.toFixed(1)}p
+                      {(sig.pnlPips ?? 0).toFixed(1)}p
                     </td>
                   </tr>
                 ))}

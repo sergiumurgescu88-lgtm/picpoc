@@ -35,7 +35,7 @@ export function NotificationToastStack({ toasts, onDismiss }: NotificationToastS
                 {toast.message}
               </p>
               <div className="mt-1.5 font-mono text-[11px] text-slate-400 tabular-nums">
-                XAU/USD @ {toast.price.toFixed(2)} ·{' '}
+                XAU/USD @ {(toast.price ?? 0).toFixed(2)} ·{' '}
                 {new Date(toast.timestamp).toLocaleTimeString('ro-RO')}
               </div>
             </div>

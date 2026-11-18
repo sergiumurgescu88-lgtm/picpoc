@@ -527,8 +527,8 @@ export function SignalResolutionPanel({
       `"${s.reachedTargets.join(' -> ')}"`,
       s.status,
       s.resolution,
-      s.pnlPips.toFixed(1),
-      s.rMultiple.toFixed(2),
+      (s.pnlPips ?? 0).toFixed(1),
+      (s.rMultiple ?? 0).toFixed(2),
     ]);
     const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -1324,8 +1324,8 @@ export function SignalResolutionPanel({
                         }`}
                       >
                         {sig.pnlPips >= 0 ? '+' : ''}
-                        {sig.pnlPips.toFixed(1)}p ({sig.rMultiple >= 0 ? '+' : ''}
-                        {sig.rMultiple.toFixed(2)}R)
+                        {(sig.pnlPips ?? 0).toFixed(1)}p ({sig.rMultiple >= 0 ? '+' : ''}
+                        {(sig.rMultiple ?? 0).toFixed(2)}R)
                       </td>
                       <td className="py-2.5 px-3 text-right text-slate-500 dark:text-slate-400 whitespace-nowrap">
                         {formatDuration(sig.createdAt, sig.closedAt)}
@@ -1408,7 +1408,7 @@ export function SignalResolutionPanel({
                         }
                       >
                         ({evt.pnlPips >= 0 ? '+' : ''}
-                        {evt.pnlPips.toFixed(1)}p)
+                        {(evt.pnlPips ?? 0).toFixed(1)}p)
                       </span>
                     )}
                   </div>

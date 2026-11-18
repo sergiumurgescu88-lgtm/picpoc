@@ -288,7 +288,7 @@ export function CorrelationMatrix({ isDark }: CorrelationMatrixProps) {
                     }`}
                   >
                     r = {hoveredCell.cell.value > 0 ? '+' : ''}
-                    {hoveredCell.cell.value.toFixed(2)} · {describeCorrelation(hoveredCell.cell.value)}
+                    {(hoveredCell.cell.value ?? 0).toFixed(2)} · {describeCorrelation(hoveredCell.cell.value)}
                   </div>
                 </div>
               )}
@@ -337,7 +337,7 @@ export function CorrelationMatrix({ isDark }: CorrelationMatrixProps) {
                           </div>
                         </td>
                         <td className="py-2 text-right text-slate-900 dark:text-slate-200">
-                          {asset.price.toFixed(2)}
+                          {(asset.price ?? 0).toFixed(2)}
                         </td>
                         <td
                           className={`py-2 text-right font-semibold ${
@@ -347,7 +347,7 @@ export function CorrelationMatrix({ isDark }: CorrelationMatrixProps) {
                           }`}
                         >
                           {pos24 ? '+' : ''}
-                          {asset.changePct24h.toFixed(2)}%
+                          {(asset.changePct24h ?? 0).toFixed(2)}%
                         </td>
                         <td
                           className={`py-2 text-right ${
@@ -357,7 +357,7 @@ export function CorrelationMatrix({ isDark }: CorrelationMatrixProps) {
                           }`}
                         >
                           {pos7d ? '+' : ''}
-                          {asset.changePct7d.toFixed(2)}%
+                          {(asset.changePct7d ?? 0).toFixed(2)}%
                         </td>
                       </tr>
                     );

@@ -175,7 +175,7 @@ export function MarketNewsFeed() {
                         : 'Inflație 10Y'}
                   </div>
                   <div className="mt-0.5 text-xs font-bold text-slate-900 dark:text-white">
-                    {m.value.toFixed(2)}%
+                    {(m.value ?? 0).toFixed(2)}%
                   </div>
                   <div className={`text-[10px] font-semibold ${impactColor}`}>
                     {m.changeBps > 0 ? `+${m.changeBps}` : m.changeBps} bps ·{' '}
