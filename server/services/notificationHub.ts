@@ -170,6 +170,11 @@ export class NotificationHub {
     const synced = await this.marketFeed.syncExternalMarketData();
     if (!synced) return;
 
+    // Sync live broker price to market feed before signal evaluation
+    const brokerStatus = this.brokerService?.getPublicStatus();
+    if (brokerStatus?.xauSymbol?.bid && brokerStatus?.xauSymbol?.ask) {
+      this.marketFeed.updateLiveTick(brokerStatus.xauSymbol.bid, brokerStatus.xauSymbol.ask);
+    }
     const tick = this.marketFeed.getTick();
     const { transitions } = this.signalEngine.updateSignalsOnTick(tick.mid);
     this.emitSignalTransitions(transitions, tick.mid);

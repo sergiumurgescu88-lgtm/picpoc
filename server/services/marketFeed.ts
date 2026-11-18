@@ -86,6 +86,15 @@ export class MarketFeedService {
     return this.candlesByTf.get(timeframe) ?? [];
   }
 
+    public updateLiveTick(bid: number, ask: number): void {
+    this.currentTick = {
+      bid,
+      ask,
+      mid: Number(((bid + ask) / 2).toFixed(2)),
+      timestamp: Date.now(),
+    };
+  }
+
   public getTick(): MarketTick {
     return this.currentTick;
   }
