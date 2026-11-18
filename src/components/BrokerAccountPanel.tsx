@@ -83,7 +83,7 @@ export function BrokerAccountPanel({
     void fetchStatus(false);
     const timer = window.setInterval(() => {
       void fetchStatus(true);
-    }, 5000);
+    }, 1000);
     return () => window.clearInterval(timer);
   }, [fetchStatus]);
 

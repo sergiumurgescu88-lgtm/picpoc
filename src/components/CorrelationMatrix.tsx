@@ -186,7 +186,7 @@ export function CorrelationMatrix({ isDark }: CorrelationMatrixProps) {
         if (Math.abs(d.value) >= 0.45) return '#FFFFFF';
         return isDark ? '#CBD5E1' : '#1E293B';
       })
-      .text((d) => (d.value > 0 ? `+${d.value.toFixed(2)}` : d.value.toFixed(2)));
+      .text((d) => (d.value > 0 ? `+${(d.value ?? 0).toFixed(2)}` : (d.value ?? 0).toFixed(2)));
 
     // Top X-Axis
     const xAxis = d3.axisTop(xScale).tickSize(0);

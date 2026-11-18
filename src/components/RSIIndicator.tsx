@@ -209,7 +209,7 @@ export function RSIIndicator({ candles, isDark, timeframe }: RSIIndicatorProps) 
           <span className="font-semibold text-slate-900 dark:text-white">
             RSI (14) · {timeframe}
           </span>
-          <span className={`font-bold ${rsiColorClass}`}>{currentRsi.toFixed(1)}</span>
+          <span className={`font-bold ${rsiColorClass}`}>{(currentRsi ?? 0).toFixed(1)}</span>
           <span className={`font-sans text-[11px] font-medium ${rsiColorClass}`}>
             {rsiZoneLabel}
           </span>

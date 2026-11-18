@@ -38,14 +38,14 @@ export function ProfitTargetCalculator({
   const defaultEntry = selectedSignalEntry ?? currentPrice ?? 2635;
 
   const [direction, setDirection] = useState<'BUY' | 'SELL'>(selectedSignalDirection ?? 'BUY');
-  const [entryInput, setEntryInput] = useState<string>(() => defaultEntry.toFixed(2));
+  const [entryInput, setEntryInput] = useState<string>(() => (defaultEntry ?? 0).toFixed(2));
   const [slDistanceInput, setSlDistanceInput] = useState<string>('6.00');
   const [selectedPrimaryRr, setSelectedPrimaryRr] = useState<number>(2);
   const [appliedTag, setAppliedTag] = useState<string | null>(null);
 
   useEffect(() => {
     if (selectedSignalEntry && Number.isFinite(selectedSignalEntry)) {
-      setEntryInput(selectedSignalEntry.toFixed(2));
+      setEntryInput((selectedSignalEntry ?? 0).toFixed(2));
     }
   }, [selectedSignalEntry]);
 
@@ -83,7 +83,7 @@ export function ProfitTargetCalculator({
       const estimatedProfitUsd = Math.round(distanceUsd * estimatedLots * 100 * 100) / 100;
       return {
         ratio,
-        label: `1:${Number.isInteger(ratio) ? ratio.toFixed(0) : ratio.toFixed(1)}`,
+        label: `1:${Number.isInteger(ratio) ? (ratio ?? 0).toFixed(0) : (ratio ?? 0).toFixed(1)}`,
         targetPrice,
         distanceUsd,
         distancePips,
@@ -102,14 +102,14 @@ export function ProfitTargetCalculator({
 
   const handleUseLivePrice = () => {
     if (currentPrice && Number.isFinite(currentPrice)) {
-      setEntryInput(currentPrice.toFixed(2));
+      setEntryInput((currentPrice ?? 0).toFixed(2));
     }
   };
 
   const handleReset = () => {
     const base = currentPrice ?? 2635;
     setDirection('BUY');
-    setEntryInput(base.toFixed(2));
+    setEntryInput((base ?? 0).toFixed(2));
     setSlDistanceInput('6.00');
     setSelectedPrimaryRr(2);
     setAppliedTag(null);
@@ -137,7 +137,7 @@ export function ProfitTargetCalculator({
       tp3,
     });
 
-    const tag = `1:${Number.isInteger(primaryRatio) ? primaryRatio.toFixed(0) : primaryRatio.toFixed(1)}`;
+    const tag = `1:${Number.isInteger(primaryRatio) ? (primaryRatio ?? 0).toFixed(0) : (primaryRatio ?? 0).toFixed(1)}`;
     setAppliedTag(tag);
     window.setTimeout(() => {
       setAppliedTag((prev) => (prev === tag ? null : prev));
@@ -168,7 +168,7 @@ export function ProfitTargetCalculator({
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-[#222C40] bg-slate-50 dark:bg-[#141A26] text-xs font-medium text-slate-700 dark:text-slate-200 hover:border-amber-500/60 hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer whitespace-nowrap shrink-0"
             >
               <Crosshair className="w-3.5 h-3.5" />
-              <span className="font-mono tabular-nums">Preț Live ({currentPrice.toFixed(2)})</span>
+              <span className="font-mono tabular-nums">Preț Live ({(currentPrice ?? 0).toFixed(2)})</span>
             </button>
           )}
           <button
@@ -286,10 +286,10 @@ export function ProfitTargetCalculator({
                       Stop-Loss Calculat ({direction === 'BUY' ? 'Sub Entry' : 'Peste Entry'})
                     </div>
                     <div className="mt-0.5 text-lg font-bold text-rose-600 dark:text-rose-400">
-                      {calculations.stopLossPrice.toFixed(2)}
+                      {(calculations.stopLossPrice ?? 0).toFixed(2)}
                     </div>
                     <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                      -{parsedSlDist.toFixed(2)} USD · {calculations.slPips} pips
+                      -{(parsedSlDist ?? 0).toFixed(2)} USD · {calculations.slPips} pips
                     </div>
                   </div>
 
@@ -298,10 +298,10 @@ export function ProfitTargetCalculator({
                       Volum & Risc ({riskPercent}%)
                     </div>
                     <div className="mt-0.5 text-lg font-bold text-slate-900 dark:text-white">
-                      {calculations.estimatedLots.toFixed(2)} Loturi
+                      {(calculations.estimatedLots ?? 0).toFixed(2)} Loturi
                     </div>
                     <div className="text-[11px] text-rose-600 dark:text-rose-400">
-                      Risc: -${calculations.riskUsd.toFixed(2)}
+                      Risc: -${(calculations.riskUsd ?? 0).toFixed(2)}
                     </div>
                   </div>
                 </div>
@@ -318,7 +318,7 @@ export function ProfitTargetCalculator({
                     </>
                   ) : (
                     <span>
-                      Aplică Entry, SL & TP (1:{Number.isInteger(selectedPrimaryRr) ? selectedPrimaryRr : selectedPrimaryRr.toFixed(1)}) în Poziție
+                      Aplică Entry, SL & TP (1:{Number.isInteger(selectedPrimaryRr) ? selectedPrimaryRr : (selectedPrimaryRr ?? 0).toFixed(1)}) în Poziție
                     </span>
                   )}
                 </button>
@@ -335,7 +335,7 @@ export function ProfitTargetCalculator({
             </span>
             {calculations && (
               <span className="text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400">
-                SL: {calculations.stopLossPrice.toFixed(2)} · Entry: {parsedEntry.toFixed(2)}
+                SL: {(calculations.stopLossPrice ?? 0).toFixed(2)} · Entry: {(parsedEntry ?? 0).toFixed(2)}
               </span>
             )}
           </div>
@@ -373,13 +373,13 @@ export function ProfitTargetCalculator({
                           )}
                         </td>
                         <td className="py-2.5 px-3 text-right font-bold text-emerald-600 dark:text-emerald-400">
-                          {row.targetPrice.toFixed(2)}
+                          {(row.targetPrice ?? 0).toFixed(2)}
                         </td>
                         <td className="py-2.5 px-3 text-right text-slate-600 dark:text-slate-300">
-                          +${row.distanceUsd.toFixed(2)} ({row.distancePips}p)
+                          +${(row.distanceUsd ?? 0).toFixed(2)} ({row.distancePips}p)
                         </td>
                         <td className="py-2.5 px-3 text-right font-semibold text-emerald-600 dark:text-emerald-400">
-                          +${row.estimatedProfitUsd.toFixed(2)}
+                          +${(row.estimatedProfitUsd ?? 0).toFixed(2)}
                         </td>
                         <td className="py-2.5 pl-3 text-right font-sans">
                           <button

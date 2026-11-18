@@ -396,19 +396,19 @@ export function ChartPanel({
         {showEma && analysis ? (
           <div className="flex flex-wrap items-center gap-4">
             <span>
-              <span className="text-amber-500 font-semibold">EMA20</span> {analysis.indicators.ema20.toFixed(2)}
+              <span className="text-amber-500 font-semibold">EMA20</span> {(analysis.indicators.ema20 ?? 0).toFixed(2)}
             </span>
             <span>
-              <span className="text-sky-400 font-semibold">EMA50</span> {analysis.indicators.ema50.toFixed(2)}
+              <span className="text-sky-400 font-semibold">EMA50</span> {(analysis.indicators.ema50 ?? 0).toFixed(2)}
             </span>
             <span>
-              <span className="text-purple-400 font-semibold">EMA200</span> {analysis.indicators.ema200.toFixed(2)}
+              <span className="text-purple-400 font-semibold">EMA200</span> {(analysis.indicators.ema200 ?? 0).toFixed(2)}
             </span>
             <span>
-              RSI(14) <strong className="text-slate-900 dark:text-slate-200">{analysis.indicators.rsi14.toFixed(1)}</strong>
+              RSI(14) <strong className="text-slate-900 dark:text-slate-200">{(analysis.indicators.rsi14 ?? 0).toFixed(1)}</strong>
             </span>
             <span>
-              ATR(14) <strong className="text-slate-900 dark:text-slate-200">{analysis.indicators.atr14.toFixed(2)}</strong>
+              ATR(14) <strong className="text-slate-900 dark:text-slate-200">{(analysis.indicators.atr14 ?? 0).toFixed(2)}</strong>
             </span>
           </div>
         ) : (
@@ -424,7 +424,7 @@ export function ChartPanel({
                   : 'font-bold text-rose-600 dark:text-rose-400'
               }
             >
-              {selectedSignal.direction} @ {selectedSignal.entry.toFixed(2)}
+              {selectedSignal.direction} @ {(selectedSignal.entry ?? 0).toFixed(2)}
             </span>
             <span aria-hidden="true">·</span>
             <span
@@ -434,7 +434,7 @@ export function ChartPanel({
                   : 'text-rose-600 dark:text-rose-400'
               }
             >
-              SL {selectedSignal.stopLoss.toFixed(2)}
+              SL {(selectedSignal.stopLoss ?? 0).toFixed(2)}
               {selectedSignal.reachedTargets.includes('TP2')
                 ? ' (Profit Blocat)'
                 : selectedSignal.reachedTargets.includes('TP1')

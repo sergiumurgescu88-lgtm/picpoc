@@ -73,10 +73,10 @@ export function WorkspaceToolbar({
       await onQuickAddPriceAlert({
         type: triggerMode,
         threshold: Math.round(parsed * 100) / 100,
-        note: `Trigger rapid ${label} XAU/USD @ ${parsed.toFixed(2)}`,
+        note: `Trigger rapid ${label} XAU/USD @ ${(parsed ?? 0).toFixed(2)}`,
       });
       setPriceInput('');
-      setTriggerSaved(`${label} @ ${parsed.toFixed(2)}`);
+      setTriggerSaved(`${label} @ ${(parsed ?? 0).toFixed(2)}`);
       window.setTimeout(() => setTriggerSaved(null), 3000);
     } catch (err) {
       setTriggerError(err instanceof Error ? err.message : 'Eroare alertă');
@@ -95,7 +95,7 @@ export function WorkspaceToolbar({
               XAU/USD
             </span>
             <span className="font-mono text-2xl font-bold text-slate-900 dark:text-white tabular-nums">
-              {tick ? tick.mid.toFixed(2) : '----.--'}
+              {tick ? (tick.mid ?? 0).toFixed(2) : '----.--'}
             </span>
             {tick && (
               <>
@@ -105,11 +105,11 @@ export function WorkspaceToolbar({
                       ? 'text-emerald-600 dark:text-emerald-400'
                       : 'text-rose-600 dark:text-rose-400'
                   }`}
-                  title={`Price Delta față de deschiderea pieței (${tick.marketOpen.toFixed(2)} USD)`}
+                  title={`Price Delta față de deschiderea pieței (${(tick.marketOpen ?? 0).toFixed(2)} USD)`}
                 >
                   Price Delta {isOpenDeltaPositive ? '▲ +' : '▼ '}
-                  {tick.openDeltaPct.toFixed(2)}% ({isOpenDeltaPositive ? '+' : ''}
-                  {tick.openDelta.toFixed(2)})
+                  {(tick.openDeltaPct ?? 0).toFixed(2)}% ({isOpenDeltaPositive ? '+' : ''}
+                  {(tick.openDelta ?? 0).toFixed(2)})
                 </span>
                 <span className="text-slate-300 dark:text-slate-700" aria-hidden="true">
                   ·
@@ -123,7 +123,7 @@ export function WorkspaceToolbar({
                   title="Variație 24h"
                 >
                   24h {isPositive ? '+' : ''}
-                  {tick.change24hPct.toFixed(2)}%
+                  {(tick.change24hPct ?? 0).toFixed(2)}%
                 </span>
               </>
             )}
@@ -131,21 +131,21 @@ export function WorkspaceToolbar({
 
           <div className="hidden sm:flex items-center gap-4 text-xs text-slate-500 dark:text-slate-400 font-mono tabular-nums">
             <span>
-              Bid <strong className="text-slate-800 dark:text-slate-200">{tick ? tick.bid.toFixed(2) : '--'}</strong>
+              Bid <strong className="text-slate-800 dark:text-slate-200">{tick ? (tick.bid ?? 0).toFixed(2) : '--'}</strong>
             </span>
             <span aria-hidden="true">·</span>
             <span>
-              Ask <strong className="text-slate-800 dark:text-slate-200">{tick ? tick.ask.toFixed(2) : '--'}</strong>
+              Ask <strong className="text-slate-800 dark:text-slate-200">{tick ? (tick.ask ?? 0).toFixed(2) : '--'}</strong>
             </span>
             <span aria-hidden="true">·</span>
             <span>
-              Spread <strong className="text-slate-800 dark:text-slate-200">{tick ? tick.spread.toFixed(2) : '--'}</strong>
+              Spread <strong className="text-slate-800 dark:text-slate-200">{tick ? (tick.spread ?? 0).toFixed(2) : '--'}</strong>
             </span>
             <span aria-hidden="true">·</span>
             <span>
               24h L/H{' '}
               <strong className="text-slate-800 dark:text-slate-200">
-                {tick ? `${tick.low24h.toFixed(1)} / ${tick.high24h.toFixed(1)}` : '--'}
+                {tick ? `${(tick.low24h ?? 0).toFixed(1)} / ${(tick.high24h ?? 0).toFixed(1)}` : '--'}
               </strong>
             </span>
           </div>

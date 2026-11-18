@@ -73,7 +73,7 @@ export function TechnicalAnalysisPanel({ analysis, compact = false }: TechnicalA
           <div>
             <div className="text-xs text-slate-500 dark:text-slate-400">RSI (14)</div>
             <div className="mt-1 font-mono text-base font-bold tabular-nums text-slate-900 dark:text-white">
-              {indicators.rsi14.toFixed(1)}
+              {(indicators.rsi14 ?? 0).toFixed(1)}
             </div>
             <div className="text-[11px] text-slate-500 dark:text-slate-400">
               {RSI_LABELS[indicators.rsiState]}
@@ -90,17 +90,17 @@ export function TechnicalAnalysisPanel({ analysis, compact = false }: TechnicalA
               }`}
             >
               {indicators.macd.histogram >= 0 ? '+' : ''}
-              {indicators.macd.histogram.toFixed(2)}
+              {(indicators.macd.histogram ?? 0).toFixed(2)}
             </div>
             <div className="text-[11px] text-slate-500 dark:text-slate-400">
-              Linie {indicators.macd.line.toFixed(2)} · Sig {indicators.macd.signal.toFixed(2)}
+              Linie {(indicators.macd.line ?? 0).toFixed(2)} · Sig {(indicators.macd.signal ?? 0).toFixed(2)}
             </div>
           </div>
 
           <div>
             <div className="text-xs text-slate-500 dark:text-slate-400">Stochastic RSI</div>
             <div className="mt-1 font-mono text-base font-bold tabular-nums text-slate-900 dark:text-white">
-              {indicators.stochRsi.k.toFixed(1)} / {indicators.stochRsi.d.toFixed(1)}
+              {(indicators.stochRsi.k ?? 0).toFixed(1)} / {(indicators.stochRsi.d ?? 0).toFixed(1)}
             </div>
             <div className="text-[11px] text-slate-500 dark:text-slate-400">%K / %D Raport</div>
           </div>
@@ -108,7 +108,7 @@ export function TechnicalAnalysisPanel({ analysis, compact = false }: TechnicalA
           <div>
             <div className="text-xs text-slate-500 dark:text-slate-400">ADX (14) Trend</div>
             <div className="mt-1 font-mono text-base font-bold tabular-nums text-slate-900 dark:text-white">
-              {indicators.adx14.toFixed(1)}
+              {(indicators.adx14 ?? 0).toFixed(1)}
             </div>
             <div className="text-[11px] text-slate-500 dark:text-slate-400">
               {indicators.adx14 >= 25 ? 'Trend Puternic' : 'Trend Moderat / Range'}
@@ -118,7 +118,7 @@ export function TechnicalAnalysisPanel({ analysis, compact = false }: TechnicalA
           <div>
             <div className="text-xs text-slate-500 dark:text-slate-400">ATR (14) Volatilitate</div>
             <div className="mt-1 font-mono text-base font-bold tabular-nums text-slate-900 dark:text-white">
-              ${indicators.atr14.toFixed(2)}
+              ${(indicators.atr14 ?? 0).toFixed(2)}
             </div>
             <div className="text-[11px] text-slate-500 dark:text-slate-400">
               SL Recomandat ~${(indicators.atr14 * 1.45).toFixed(2)}
@@ -128,10 +128,10 @@ export function TechnicalAnalysisPanel({ analysis, compact = false }: TechnicalA
           <div>
             <div className="text-xs text-slate-500 dark:text-slate-400">Bollinger %B</div>
             <div className="mt-1 font-mono text-base font-bold tabular-nums text-slate-900 dark:text-white">
-              {indicators.bollinger.percentB.toFixed(1)}%
+              {(indicators.bollinger.percentB ?? 0).toFixed(1)}%
             </div>
             <div className="text-[11px] text-slate-500 dark:text-slate-400">
-              {indicators.bollinger.squeeze ? 'Compresie (Squeeze Activ)' : `Bandă ${indicators.bollinger.bandwidth.toFixed(2)}%`}
+              {indicators.bollinger.squeeze ? 'Compresie (Squeeze Activ)' : `Bandă ${(indicators.bollinger.bandwidth ?? 0).toFixed(2)}%`}
             </div>
           </div>
         </div>
@@ -171,7 +171,7 @@ export function TechnicalAnalysisPanel({ analysis, compact = false }: TechnicalA
                           : 'Mixtă'}
                     </td>
                     <td className="py-2.5 px-4 text-right text-slate-900 dark:text-slate-200">
-                      {row.rsi14.toFixed(1)}
+                      {(row.rsi14 ?? 0).toFixed(1)}
                     </td>
                     <td
                       className={`py-2.5 px-4 ${
@@ -272,7 +272,7 @@ export function TechnicalAnalysisPanel({ analysis, compact = false }: TechnicalA
                           OB {ob.direction === 'BULLISH' ? 'Cerere' : 'Ofertă'}
                         </span>
                         <span className="text-slate-800 dark:text-slate-200">
-                          {ob.bottom.toFixed(2)} – {ob.top.toFixed(2)}
+                          {(ob.bottom ?? 0).toFixed(2)} – {(ob.top ?? 0).toFixed(2)}
                         </span>
                       </li>
                     ))}
@@ -300,7 +300,7 @@ export function TechnicalAnalysisPanel({ analysis, compact = false }: TechnicalA
                           FVG {fvg.direction === 'BULLISH' ? 'Bull' : 'Bear'}
                         </span>
                         <span className="text-slate-800 dark:text-slate-200">
-                          {fvg.bottom.toFixed(2)} – {fvg.top.toFixed(2)}
+                          {(fvg.bottom ?? 0).toFixed(2)} – {(fvg.top ?? 0).toFixed(2)}
                         </span>
                       </li>
                     ))}
@@ -335,7 +335,7 @@ export function TechnicalAnalysisPanel({ analysis, compact = false }: TechnicalA
                   className="flex items-center justify-between py-1 border-b border-slate-100 dark:border-[#182030] last:border-0"
                 >
                   <span className="text-slate-500 dark:text-slate-400 font-sans">{row.label}</span>
-                  <span className={row.tone}>{row.val.toFixed(2)}</span>
+                  <span className={row.tone}>{(row.val ?? 0).toFixed(2)}</span>
                 </div>
               ))}
             </div>
@@ -354,7 +354,7 @@ export function TechnicalAnalysisPanel({ analysis, compact = false }: TechnicalA
             <div className="space-y-1.5 text-xs font-mono tabular-nums">
               <div className="flex justify-between py-1 border-b border-slate-100 dark:border-[#182030]">
                 <span className="text-slate-500 font-sans">Swing High (1.000)</span>
-                <span className="text-slate-900 dark:text-white">{indicators.fibonacci.swingHigh.toFixed(2)}</span>
+                <span className="text-slate-900 dark:text-white">{(indicators.fibonacci.swingHigh ?? 0).toFixed(2)}</span>
               </div>
               {indicators.fibonacci.levels.map((lvl) => (
                 <div
@@ -363,13 +363,13 @@ export function TechnicalAnalysisPanel({ analysis, compact = false }: TechnicalA
                 >
                   <span className="text-slate-500 font-sans">Fib {lvl.level}</span>
                   <span className={lvl.level.includes('0.618') ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-slate-800 dark:text-slate-200'}>
-                    {lvl.price.toFixed(2)}
+                    {(lvl.price ?? 0).toFixed(2)}
                   </span>
                 </div>
               ))}
               <div className="flex justify-between py-1">
                 <span className="text-slate-500 font-sans">Swing Low (0.000)</span>
-                <span className="text-slate-900 dark:text-white">{indicators.fibonacci.swingLow.toFixed(2)}</span>
+                <span className="text-slate-900 dark:text-white">{(indicators.fibonacci.swingLow ?? 0).toFixed(2)}</span>
               </div>
             </div>
           </div>
@@ -394,7 +394,7 @@ export function TechnicalAnalysisPanel({ analysis, compact = false }: TechnicalA
                 >
                   <span className="text-slate-500 dark:text-slate-400 font-sans">{row.label}</span>
                   <span className="font-semibold text-slate-900 dark:text-slate-100">
-                    {row.val.toFixed(2)}
+                    {(row.val ?? 0).toFixed(2)}
                   </span>
                 </div>
               ))}

@@ -214,7 +214,7 @@ export function SignalCardList({
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400 font-mono tabular-nums">
                       <span>{sig.timeframe}</span>
                       <span aria-hidden="true">·</span>
-                      <span>R:R 1:{sig.riskReward.toFixed(1)}</span>
+                      <span>R:R 1:{(sig.riskReward ?? 0).toFixed(1)}</span>
                       <span aria-hidden="true">·</span>
                       <span>Confluență {sig.confidence}%</span>
                       <span aria-hidden="true">·</span>
@@ -260,7 +260,7 @@ export function SignalCardList({
                   <div>
                     <div className="text-slate-400 dark:text-slate-500">Entry</div>
                     <div className="font-semibold text-slate-900 dark:text-white">
-                      {sig.entry.toFixed(2)}
+                      {(sig.entry ?? 0).toFixed(2)}
                     </div>
                   </div>
                   <div>
@@ -296,7 +296,7 @@ export function SignalCardList({
                             : 'text-rose-600 dark:text-rose-400'
                       }`}
                     >
-                      {sig.stopLoss.toFixed(2)}
+                      {(sig.stopLoss ?? 0).toFixed(2)}
                     </div>
                   </div>
                   {(
@@ -327,7 +327,7 @@ export function SignalCardList({
                               : 'font-semibold text-emerald-600/80 dark:text-emerald-400/80'
                           }
                         >
-                          {item.val.toFixed(2)}
+                          {(item.val ?? 0).toFixed(2)}
                         </div>
                       </div>
                     );
@@ -357,8 +357,8 @@ export function SignalCardList({
                           <ShieldCheck className="w-3.5 h-3.5 shrink-0 mt-0.5 text-emerald-500" />
                           <span>
                             <strong>Trailing Stop Activ:</strong> Stop-Loss mutat automat de la{' '}
-                            <span className="font-mono">{sig.initialStopLoss.toFixed(2)}</span> la{' '}
-                            <span className="font-mono font-semibold">{sig.stopLoss.toFixed(2)}</span>{' '}
+                            <span className="font-mono">{(sig.initialStopLoss ?? 0).toFixed(2)}</span> la{' '}
+                            <span className="font-mono font-semibold">{(sig.stopLoss ?? 0).toFixed(2)}</span>{' '}
                             (
                             {Math.abs(sig.stopLoss - sig.entry) < 0.06
                               ? 'Breakeven · Risc Capital 0%'
