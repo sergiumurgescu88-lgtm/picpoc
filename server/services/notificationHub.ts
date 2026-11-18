@@ -267,6 +267,9 @@ export class NotificationHub {
         if (isBeTightened) {
           void this.brokerService?.autoSyncTrailingStopForSignal(act.signal.direction, act.signal.stopLoss).catch(() => {});
         }
+        if (isExit) {
+          void this.brokerService?.closeMatchingDemoPosition(act.signal.direction).catch(() => {});
+        }
         const notif = this.recordNotification({
           category: isExit
             ? 'SIGNAL_REVERSAL_EXIT'
