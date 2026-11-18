@@ -31,7 +31,7 @@ export function RiskCalculatorPanel({
   const [accountLeverage, setAccountLeverage] = useState(30);
   const [riskPercent, setRiskPercent] = useState('1.0');
   const [entryPrice, setEntryPrice] = useState(() =>
-    selectedSignal ? selectedSignal.entry.toFixed(2) : (currentPrice ?? 2635).toFixed(2)
+    selectedSignal ? (selectedSignal.entry ?? 0).toFixed(2) : (currentPrice ?? 2635).toFixed(2)
   );
   const [stopLoss, setStopLoss] = useState(() =>
     selectedSignal
@@ -39,23 +39,23 @@ export function RiskCalculatorPanel({
       : ((currentPrice ?? 2635) - 6).toFixed(2)
   );
   const [tp1, setTp1] = useState(() =>
-    selectedSignal ? selectedSignal.tp1.toFixed(2) : ((currentPrice ?? 2635) + 7.5).toFixed(2)
+    selectedSignal ? (selectedSignal.tp1 ?? 0).toFixed(2) : ((currentPrice ?? 2635) + 7.5).toFixed(2)
   );
   const [tp2, setTp2] = useState(() =>
-    selectedSignal ? selectedSignal.tp2.toFixed(2) : ((currentPrice ?? 2635) + 13).toFixed(2)
+    selectedSignal ? (selectedSignal.tp2 ?? 0).toFixed(2) : ((currentPrice ?? 2635) + 13).toFixed(2)
   );
   const [tp3, setTp3] = useState(() =>
-    selectedSignal ? selectedSignal.tp3.toFixed(2) : ((currentPrice ?? 2635) + 20).toFixed(2)
+    selectedSignal ? (selectedSignal.tp3 ?? 0).toFixed(2) : ((currentPrice ?? 2635) + 20).toFixed(2)
   );
   const [result, setResult] = useState<RiskCalcResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadFromSignal = (sig: TradingSignal) => {
-    setEntryPrice(sig.entry.toFixed(2));
+    setEntryPrice((sig.entry ?? 0).toFixed(2));
     setStopLoss((sig.initialStopLoss ?? sig.stopLoss).toFixed(2));
-    setTp1(sig.tp1.toFixed(2));
-    setTp2(sig.tp2.toFixed(2));
-    setTp3(sig.tp3.toFixed(2));
+    setTp1((sig.tp1 ?? 0).toFixed(2));
+    setTp2((sig.tp2 ?? 0).toFixed(2));
+    setTp3((sig.tp3 ?? 0).toFixed(2));
   };
 
   const calculateOnServer = async (
@@ -313,6 +313,11 @@ export function RiskCalculatorPanel({
                 <div className="text-slate-500 font-sans">Volum Recomandat</div>
                 <div className="text-lg font-bold text-amber-600 dark:text-amber-400">
                   {(result.recommendedLots ?? 0).toFixed(2)} Loturi
+                  {(result.recommendedLots ?? 0) < 0.04 && (
+                    <span className="block text-xs text-amber-500 mt-1 font-medium">
+                      ⚠️ Volum &lt; 0.04L: Scale-out pe 4 TP-uri indisponibil (se va închide complet la TP1)
+                    </span>
+                  )}
                 </div>
               </div>
               <div>
@@ -333,7 +338,7 @@ export function RiskCalculatorPanel({
                 <div>
                   <div className="text-slate-500 font-sans">Profit Estimativ TP2</div>
                   <div className="font-semibold text-emerald-600 dark:text-emerald-400">
-                    +${result.projectedTp2.rewardUsd.toFixed(2)} (1:{result.projectedTp2.rr})
+                    +${(result.projectedTp2.rewardUsd ?? 0).toFixed(2)} (1:{result.projectedTp2.rr})
                   </div>
                 </div>
               )}
@@ -378,16 +383,16 @@ export function RiskCalculatorPanel({
                       <div className="text-[11px] text-slate-500">{sig.timeframe} · {sig.status}</div>
                     </td>
                     <td className="py-2.5 px-4 text-right text-slate-900 dark:text-white">
-                      {sig.entry.toFixed(2)}
+                      {(sig.entry ?? 0).toFixed(2)}
                     </td>
                     <td className="py-2.5 px-4 text-right text-rose-600 dark:text-rose-400">
-                      {sig.stopLoss.toFixed(2)}
+                      {(sig.stopLoss ?? 0).toFixed(2)}
                     </td>
                     <td className="py-2.5 px-4 text-right text-emerald-600 dark:text-emerald-400">
-                      {sig.tp2.toFixed(2)}
+                      {(sig.tp2 ?? 0).toFixed(2)}
                     </td>
                     <td className="py-2.5 px-4 text-right text-emerald-600 dark:text-emerald-400">
-                      {sig.tp4.toFixed(2)}
+                      {(sig.tp4 ?? 0).toFixed(2)}
                     </td>
                     <td
                       className={`py-2.5 px-4 text-right font-semibold ${

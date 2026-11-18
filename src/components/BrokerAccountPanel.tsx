@@ -176,17 +176,17 @@ export function BrokerAccountPanel({
       setLotsInput(Math.max(0.01, suggestedLots).toFixed(2));
     }
     if (suggestedSlDistance && suggestedSlDistance >= 0.5) {
-      setSlDistInput(suggestedSlDistance.toFixed(2));
+      setSlDistInput((suggestedSlDistance ?? 0).toFixed(2));
     }
     if (suggestedTpDistance && suggestedTpDistance >= 0.5) {
-      setTpDistInput(suggestedTpDistance.toFixed(2));
+      setTpDistInput((suggestedTpDistance ?? 0).toFixed(2));
     } else if (selectedSignal) {
       setTradeSide(selectedSignal.direction);
       const baseSl = selectedSignal.initialStopLoss ?? selectedSignal.stopLoss;
       const slDist = Math.abs(selectedSignal.entry - baseSl);
       const tpDist = Math.abs(selectedSignal.tp2 - selectedSignal.entry);
-      if (slDist >= 0.5) setSlDistInput(slDist.toFixed(2));
-      if (tpDist >= 0.5) setTpDistInput(tpDist.toFixed(2));
+      if (slDist >= 0.5) setSlDistInput((slDist ?? 0).toFixed(2));
+      if (tpDist >= 0.5) setTpDistInput((tpDist ?? 0).toFixed(2));
     }
     setFeedback({ type: 'ok', text: 'Parametrii de risc și țintele au fost încărcați în tichetul Demo.' });
   };
@@ -202,6 +202,9 @@ export function BrokerAccountPanel({
     if (!Number.isFinite(lots) || lots < 0.01 || lots > 5) {
       setFeedback({ type: 'err', text: 'Volumul trebuie să fie între 0.01 și 5.00 loturi.' });
       return;
+    }
+    if (lots < 0.04) {
+      setFeedback({ type: 'warn', text: 'Atenție: Volum < 0.04L nu permite scale-out pe 4 TP-uri (minim 0.01L per TP). Poziția se va închide 100% la primul TP atins.' });
     }
     if (slDist !== undefined && (!Number.isFinite(slDist) || slDist < 0.5)) {
       setFeedback({ type: 'err', text: 'Distanța Stop-Loss minimă este $0.50.' });
@@ -238,7 +241,7 @@ export function BrokerAccountPanel({
       if (data.status) setStatus(data.status);
       setFeedback({
         type: 'ok',
-        text: `Ordin ${tradeSide} ${lots.toFixed(2)} loturi XAUUSD executat pe contul Demo Pepperstone.`,
+        text: `Ordin ${tradeSide} ${(lots ?? 0).toFixed(2)} loturi XAUUSD executat pe contul Demo Pepperstone.`,
       });
     } catch {
       setFeedback({ type: 'err', text: 'Eroare de comunicare la trimiterea ordinului demo.' });
@@ -290,7 +293,7 @@ export function BrokerAccountPanel({
       if (data.status) setStatus(data.status);
       setFeedback({
         type: 'ok',
-        text: `Stop-Loss mutat la Breakeven${data.execution?.stopLoss ? ` (${data.execution.stopLoss.toFixed(2)})` : ''} pentru poziția #${positionId} (Risc 0%).`,
+        text: `Stop-Loss mutat la Breakeven${data.execution?.stopLoss ? ` (${(data.execution.stopLoss ?? 0).toFixed(2)})` : ''} pentru poziția #${positionId} (Risc 0%).`,
       });
     } catch {
       setFeedback({ type: 'err', text: 'Eroare la modificarea Stop-Loss la Breakeven.' });
@@ -443,7 +446,7 @@ export function BrokerAccountPanel({
             <div>
               <div className="text-xs text-slate-500 dark:text-slate-400">Balanță Cont</div>
               <div className="mt-1 font-mono text-lg font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
-                {acc ? `${acc.balance.toFixed(2)} ${acc.currency}` : '—'}
+                {acc ? `${(acc.balance ?? 0).toFixed(2)} ${acc.currency}` : '—'}
               </div>
               <div className="text-[11px] text-slate-500 dark:text-slate-400">
                 {isDemoSafe ? 'Mod DEMO Activ' : 'Mod LIVE (Blocat Execuție)'}
@@ -463,20 +466,20 @@ export function BrokerAccountPanel({
             <div>
               <div className="text-xs text-slate-500 dark:text-slate-400">Marjă Liberă / Utilizată</div>
               <div className="mt-1 font-mono text-sm font-bold text-slate-900 dark:text-white tabular-nums">
-                {acc ? `${acc.freeMargin.toFixed(2)} ${acc.currency}` : '—'}
+                {acc ? `${(acc.freeMargin ?? 0).toFixed(2)} ${acc.currency}` : '—'}
               </div>
               <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono tabular-nums">
-                Utilizată: {acc ? `${acc.marginUsed.toFixed(2)} ${acc.currency}` : '—'}
+                Utilizată: {acc ? `${(acc.marginUsed ?? 0).toFixed(2)} ${acc.currency}` : '—'}
               </div>
             </div>
 
             <div>
               <div className="text-xs text-slate-500 dark:text-slate-400">Cotă Live {sym?.symbolName || 'XAUUSD'}</div>
               <div className="mt-1 font-mono text-sm font-bold text-slate-900 dark:text-white tabular-nums">
-                {sym?.bid && sym?.ask ? `${sym.bid.toFixed(2)} / ${sym.ask.toFixed(2)}` : 'Așteptare tick...'}
+                {sym?.bid && sym?.ask ? `${(sym.bid ?? 0).toFixed(2)} / ${(sym.ask ?? 0).toFixed(2)}` : 'Așteptare tick...'}
               </div>
               <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono tabular-nums">
-                Spread: {sym?.spread !== null && sym?.spread !== undefined ? `$${sym.spread.toFixed(2)}` : '—'} · Min {sym?.minLots ?? 0.01}L
+                Spread: {sym?.spread !== null && sym?.spread !== undefined ? `$${(sym.spread ?? 0).toFixed(2)}` : '—'} · Min {sym?.minLots ?? 0.01}L
               </div>
             </div>
 
@@ -494,7 +497,7 @@ export function BrokerAccountPanel({
                   });
                   setFeedback({
                     type: 'ok',
-                    text: `Capitalul (${acc.balance.toFixed(2)} ${acc.currency}) și levierul 1:${acc.leverage} au fost aplicate în Calculatorul de Risc.`,
+                    text: `Capitalul (${(acc.balance ?? 0).toFixed(2)} ${acc.currency}) și levierul 1:${acc.leverage} au fost aplicate în Calculatorul de Risc.`,
                   });
                 }}
                 className="w-full py-2 px-3 rounded-lg border border-amber-500/50 bg-amber-500/10 hover:bg-amber-500/20 text-xs font-semibold text-amber-700 dark:text-amber-300 transition-colors cursor-pointer disabled:opacity-50"
@@ -612,12 +615,12 @@ export function BrokerAccountPanel({
                             setTradeSide(selectedSignal.direction);
                             const baseSl = selectedSignal.initialStopLoss ?? selectedSignal.stopLoss;
                             const slDist = Math.max(0.5, Math.abs(selectedSignal.entry - baseSl));
-                            setSlDistInput(slDist.toFixed(2));
-                            setTpDistInput(dist.toFixed(2));
+                            setSlDistInput((slDist ?? 0).toFixed(2));
+                            setTpDistInput((dist ?? 0).toFixed(2));
                           }}
                           className="px-2 py-0.5 rounded border border-slate-200 dark:border-[#222C40] bg-slate-50 dark:bg-[#141A26] hover:border-emerald-500/60 font-mono tabular-nums text-slate-700 dark:text-slate-200 cursor-pointer whitespace-nowrap shrink-0"
                         >
-                          {t.label} (${dist.toFixed(2)})
+                          {t.label} (${(dist ?? 0).toFixed(2)})
                         </button>
                       );
                     })}
@@ -629,7 +632,7 @@ export function BrokerAccountPanel({
                 <span>
                   Marjă est. (1:{acc?.leverage ?? 30}):{' '}
                   <strong className="text-slate-800 dark:text-slate-200">
-                    ~${estMarginUsd.toFixed(2)} USD
+                    ~${(estMarginUsd ?? 0).toFixed(2)} USD
                   </strong>
                 </span>
                 <span>1 pip = $1.00 la 0.10L · $0.10 la 0.01L</span>
@@ -702,10 +705,10 @@ export function BrokerAccountPanel({
                               {pos.tradeSide}
                             </td>
                             <td className="py-2.5 px-2 text-right text-slate-800 dark:text-slate-200">
-                              {pos.lots.toFixed(2)}
+                              {(pos.lots ?? 0).toFixed(2)}
                             </td>
                             <td className="py-2.5 px-2 text-right text-slate-900 dark:text-white">
-                              {pos.entryPrice.toFixed(2)}
+                              {(pos.entryPrice ?? 0).toFixed(2)}
                             </td>
                             <td className="py-2.5 px-2 text-right text-[11px] text-slate-500 dark:text-slate-400">
                               <span
@@ -715,11 +718,11 @@ export function BrokerAccountPanel({
                                     : ''
                                 }
                               >
-                                {pos.stopLoss ? pos.stopLoss.toFixed(2) : '—'}
+                                {pos.stopLoss ? (pos.stopLoss ?? 0).toFixed(2) : '—'}
                                 {isAlreadyProtected ? ' (BE)' : ''}
                               </span>
                               <span> / </span>
-                              <span>{pos.takeProfit ? pos.takeProfit.toFixed(2) : '—'}</span>
+                              <span>{pos.takeProfit ? (pos.takeProfit ?? 0).toFixed(2) : '—'}</span>
                             </td>
                             <td className="py-2.5 pl-2 text-right font-sans">
                               <div className="inline-flex items-center justify-end gap-1.5">
@@ -782,11 +785,11 @@ export function BrokerAccountPanel({
                         <span>
                           {ex.executionType}
                           {ex.tradeSide ? ` · ${ex.tradeSide}` : ''}
-                          {ex.lots ? ` ${ex.lots.toFixed(2)}L` : ''}
+                          {ex.lots ? ` ${(ex.lots ?? 0).toFixed(2)}L` : ''}
                           {ex.positionId ? ` #${ex.positionId}` : ''}
                         </span>
                         <span className="text-slate-500 dark:text-slate-400">
-                          {ex.price ? `@ ${ex.price.toFixed(2)} · ` : ''}
+                          {ex.price ? `@ ${(ex.price ?? 0).toFixed(2)} · ` : ''}
                           {new Date(ex.timestamp).toLocaleTimeString('ro-RO')}
                         </span>
                       </div>
