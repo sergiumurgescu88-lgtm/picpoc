@@ -666,6 +666,19 @@ export class CTraderBrokerService {
     return amendedCount;
   }
 
+  public async closeMatchingDemoPosition(direction: 'BUY' | 'SELL'): Promise<number> {
+    let closedCount = 0;
+    for (const pos of [...this.openPositions]) {
+      if (pos.tradeSide === direction && !this.activeAccountDetails?.isLive) {
+        try {
+          await this.closeDemoPosition(pos.positionId);
+          closedCount += 1;
+        } catch (e) { /* ignore */ }
+      }
+    }
+    return closedCount;
+  }
+
   public getPublicStatus(): BrokerPublicStatus {
     const oauthAuthorizeUrl =
       this.clientId && this.redirectUri

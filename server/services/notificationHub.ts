@@ -202,6 +202,11 @@ export class NotificationHub {
         void this.brokerService?.autoSyncTrailingStopForSignal(signal.direction, signal.stopLoss).catch(() => {});
       }
 
+      // Close the actual broker position when TP4 or SL is hit internally
+      if (isSl || isTp4Full) {
+        void this.brokerService?.closeMatchingDemoPosition(signal.direction).catch(() => {});
+      }
+
       const title = isSl
         ? `Stop Loss Inițial Atins (${signal.direction} ${signal.timeframe})`
         : isBeClose
