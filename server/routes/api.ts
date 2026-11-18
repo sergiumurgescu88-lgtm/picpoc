@@ -1,3 +1,4 @@
+import { TerminalStateStore } from '../services/stateStore.js';
 import { Request, Response, Router } from 'express';
 import { z } from 'zod';
 import { CONFIG, Timeframe } from '../config/env.js';
@@ -29,7 +30,8 @@ export function createApiRouter(
   marketFeed: MarketFeedService,
   signalEngine: SignalGeneratorEngine,
   notificationHub: NotificationHub,
-  brokerService?: CTraderBrokerService
+  brokerService?: CTraderBrokerService,
+  stateStore?: TerminalStateStore
 ): Router {
   const router = Router();
   const newsService = new MarketNewsService();
@@ -515,5 +517,16 @@ export function createApiRouter(
     }
   });
 
+  
+  router.get('/terminal-state', (_req: Request, res: Response) => {
+    try {
+      const state = stateStore?.load() || { signals: [], lifecycleEvents: [], policy: 'EXIT_PROFIT_ON_REVERSAL' };
+      res.json(state);
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to load terminal state' });
+    }
+  });
+
   return router;
 }
+

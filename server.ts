@@ -173,7 +173,7 @@ async function bootstrapServer() {
   notificationHub.initialize();
 
   // Mount secured REST API
-  app.use('/api', createApiRouter(marketFeed, signalEngine, notificationHub, brokerService));
+  app.use('/api', createApiRouter(marketFeed, signalEngine, notificationHub, brokerService, stateStore));
 
   // Vite middleware in dev, static assets in production
   if (CONFIG.NODE_ENV !== 'production') {
