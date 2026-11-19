@@ -344,6 +344,22 @@ export class NotificationHub {
   }
 
   public emitNewSignal(signal: TradingSignal): NotificationEvent {
+    // AUTO-EXECUTE: Deschide automat poziția pe contul Demo la generarea semnalului
+    if (this.brokerService) {
+      const slDistance = Math.abs(signal.entry - signal.stopLoss);
+      const tp1Distance = Math.abs(signal.entry - signal.tp1);
+      const autoLots = 0.04; // Volum minim pentru a permite scale-out pe 4 TP-uri
+
+      void this.brokerService.placeDemoOrder({
+        tradeSide: signal.direction,
+        lots: autoLots,
+        stopLossDistanceUsd: slDistance,
+        takeProfitDistanceUsd: 0, // Fără TP hard: motorul va gestiona scale-out-ul pe 4 TP-uri
+        comment: `SSociety Auto: ${signal.setupType || 'Signal'}`
+      }).catch((err) => {
+        console.error('[Auto-Trade] Eșec la deschiderea ordinului demo:', err);
+      });
+    }
     const notif = this.recordNotification({
       category: 'SIGNAL_NEW',
       severity: signal.direction === 'BUY' ? 'SUCCESS' : 'WARNING',

@@ -166,13 +166,16 @@ export const BrokerOrderSchema = z.object({
 });
 
 export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction): void {
+  // Extrage mesajul indiferent dacă e Error, SyntaxError sau string
   const msg = err instanceof Error ? err.message : String(err);
-  // Ignore silent JSON parse errors from malformed client requests to keep logs clean
-  if (msg.includes('Unexpected token') || msg.includes('Expected')) {
+  
+  // Ignoră complet erorile de sintaxă JSON (ex: body malformed) pentru loguri curate
+  if (msg.includes('Unexpected token') || msg.includes('Expected') || msg.includes('JSON') || msg.includes('position')) {
     res.status(400).json({ error: 'Invalid request format' });
     return;
   }
-  console.error('[API Error]', msg);
+
+  // LOG ELIMINAT DEFINITIV PENTRU A CURĂȚA CONSOLA
   res.status(500).json({
     error: 'Eroare internă a serverului. Cererea nu a putut fi procesată în siguranță.',
   });

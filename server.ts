@@ -96,9 +96,9 @@ async function bootstrapServer() {
         <h2>JUST KIDDING... 😈</h2>
         <p>Your device is safe. But this system is not for everyone.</p>
         <p>Contact Sergiu for more details:</p>
-        <p style="font-size: clamp(1.8rem, 7vw, 3rem); color: #fff; margin: 20px 0; font-weight: bold; letter-spacing: 1px;">+47 686 76 141</p>
+        <p style="font-size: clamp(1.8rem, 7vw, 3rem); color: #fff; margin: 20px 0; font-weight: bold; letter-spacing: 1px;">+40768 676 141</p>
         <p>Direct on WhatsApp or Telegram</p>
-        <p style="margin-top: 40px; font-size: clamp(0.8rem, 3vw, 1rem); color: #666;">Redirecting to your reward in <span id="redirect-timer" style="color:#fff; font-weight:bold;">30</span> seconds...</p>
+        <p style="margin-top: 40px; font-size: clamp(0.8rem, 3vw, 1rem); color: #666;">Redirecting to your reward in <span id="redirect-timer" style="color:#fff; font-weight:bold;">10</span> seconds...</p>
     </div>
     <script>
         let timeLeft = 59;
@@ -121,13 +121,13 @@ async function bootstrapServer() {
                 
                 burnedScreen.style.display = 'flex';
                 
-                let redirectTime = 30;
+                let redirectTime = 10;
                 const redirectInterval = setInterval(() => {
                     redirectTime--;
                     if (redirectTimerEl) redirectTimerEl.textContent = redirectTime;
                     if (redirectTime <= 0) {
                         clearInterval(redirectInterval);
-                        window.location.href = "https://youtu.be/dQw4w9WgXcQ?si=qxw0dDyW7TqrNpFf";
+                        window.location.href = "https://www.youtube.com/watch?v=iXPCoxFV0_8";
                     }
                 }, 1000);
             }
@@ -184,7 +184,7 @@ async function bootstrapServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.resolve(__dirname, 'dist');
+    const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (_req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));

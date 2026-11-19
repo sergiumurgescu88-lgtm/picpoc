@@ -18,7 +18,7 @@ import {
 import { CorrelationService } from '../services/correlationService.js';
 import { CTraderBrokerService } from '../services/ctraderService.js';
 import { MarketFeedService } from '../services/marketFeed.js';
-import { MarketNewsService, NewsServiceError } from '../services/newsService.js';
+// import { MarketNewsService, NewsServiceError } from '../services/newsService.js';
 import { NotificationHub } from '../services/notificationHub.js';
 import { SignalGeneratorEngine } from '../engine/signalGenerator.js';
 
@@ -34,7 +34,7 @@ export function createApiRouter(
   stateStore?: TerminalStateStore
 ): Router {
   const router = Router();
-  const newsService = new MarketNewsService();
+//   const newsService = new MarketNewsService();
   const correlationService = new CorrelationService(marketFeed);
   router.use(apiRateLimiter);
 
@@ -207,21 +207,7 @@ export function createApiRouter(
     });
   });
 
-  router.get('/market/news', async (req: Request, res: Response) => {
-    try {
-      const forceRefresh = req.query.refresh === 'true';
-      const result = await newsService.getLatestXauUsdNews(forceRefresh);
-      res.json(result);
-    } catch (err) {
-      if (err instanceof NewsServiceError) {
-        res.status(err.statusCode).json({ error: err.message });
-        return;
-      }
-      res.status(502).json({
-        error: 'Eroare neașteptată la preluarea știrilor financiare XAU/USD.',
-      });
-    }
-  });
+  router.get("/market/news", (_req: Request, res: Response) => { res.json({ items: [], macroPulse: [], cached: true, timestamp: Date.now() }); });
 
   router.get('/market/correlations', async (req: Request, res: Response) => {
     try {
