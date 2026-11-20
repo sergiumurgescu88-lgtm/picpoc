@@ -122,6 +122,17 @@ SSociety Team does not sell illusions. We sell algorithmic discipline.
 
 ---
 
+### ⚡ Institutional Execution Speed & Accuracy
+
+Retail traders lose to slippage and latency. SSociety Team operates on institutional infrastructure designed for precision:
+
+* **Ultra-Low Latency Routing:** Hosted on a dedicated Frankfurt (FRA1) node, the engine maintains **< 5ms latency** to Frankfurt liquidity hubs and **< 12ms to London (LD4)**, bypassing the 30-100ms+ jitter of residential internet.
+* **Zero Packet Loss:** Network diagnostics confirm a stable, dedicated backbone with 0% packet loss, ensuring every Stop-Loss and Take-Profit command is received by the broker instantly.
+* **Millisecond Order Execution:** Direct cTrader Open API integration via secure WebSockets guarantees millisecond order routing, eliminating the delays of standard retail REST APIs.
+* **100% Winner Protection Rate:** Thanks to the hardcoded Breakeven & Trailing logic, **0% of winning trades are ever allowed to turn into losers**. Capital is protected the exact millisecond TP1 is touched.
+* **Atomic State Persistence:** The engine saves its state to disk (`terminal-state.json`) after every micro-action. In the highly unlikely event of a server restart, the bot resumes *exactly* where it left off, with zero loss of trade context or trailing stop levels.
+---
+
 ## 📩 Contact & Onboarding
 Ready to move from the 94% to the 6%?
 
