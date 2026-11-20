@@ -604,6 +604,18 @@ export class SignalGeneratorEngine {
   ): { signal: TradingSignal | null; blockReason?: string } {
     const openSignals = this.signals.filter(SignalGeneratorEngine.isSignalOpen);
 
+    // Cooldown de 60 minute dupa SL_HIT sau MANUAL_CLOSE
+    const recentClosed = this.signals.find(
+      (s) => (s.status === 'SL_HIT' || s.exitReason === 'MANUAL_CLOSE') && s.closedAt && (Date.now() - s.closedAt < 3600000)
+    );
+    if (recentClosed) {
+      const minsLeft = Math.ceil((3600000 - (Date.now() - (recentClosed.closedAt || 0))) / 60000);
+      return {
+        signal: null,
+        blockReason: `Cooldown activ: au trecut doar ${minsLeft} minute de la ultima inchidere (${recentClosed.status === 'SL_HIT' ? 'Stop Loss' : 'Manuala'}). Sistemul asteapta 60 de minute.`,
+      };
+    }
+
     // Enforce single-position discipline: do not stack trades while an active setup runs
     if (openSignals.length >= CONFIG.SIGNAL_ENGINE.MAX_ACTIVE_SIGNALS) {
       const current = openSignals[0];

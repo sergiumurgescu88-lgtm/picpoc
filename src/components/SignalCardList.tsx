@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, CheckCircle2, ShieldCheck, XCircle } from 'lucide-react';
 import { StrategyPolicy, TradingSignal } from '../types/trading';
 
@@ -36,6 +36,36 @@ export function SignalCardList({
 }: SignalCardListProps) {
   const [filter, setFilter] = useState<'ALL' | 'ACTIVE' | 'CLOSED'>('ALL');
 
+  // Cooldown countdown logic
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
+  const [cooldownReason, setCooldownReason] = useState('');
+  
+  useEffect(() => {
+    const recentClosed = signals.find(
+      (s) => (s.status === 'SL_HIT' || s.exitReason === 'MANUAL_CLOSE') && s.closedAt && (Date.now() - s.closedAt < 3600000)
+    );
+    
+    if (recentClosed && recentClosed.closedAt) {
+      const elapsed = Date.now() - recentClosed.closedAt;
+      const remaining = Math.max(0, 3600000 - elapsed);
+      setCooldownSeconds(Math.ceil(remaining / 1000));
+      setCooldownReason(recentClosed.status === 'SL_HIT' ? 'Stop Loss' : 'Inchidere Manuala');
+    } else {
+      setCooldownSeconds(0);
+      setCooldownReason('');
+    }
+    
+    const interval = setInterval(() => {
+      if (recentClosed && recentClosed.closedAt) {
+        const elapsed = Date.now() - recentClosed.closedAt;
+        const remaining = Math.max(0, 3600000 - elapsed);
+        setCooldownSeconds(Math.ceil(remaining / 1000));
+      }
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  }, [signals]);
+
   const filtered = signals.filter((s) => {
     const isOpen =
       !s.closedAt &&
@@ -56,7 +86,22 @@ export function SignalCardList({
   return (
     <div className="rounded-xl border border-slate-200 dark:border-[#1C2331] bg-white dark:bg-[#0D111A] flex flex-col">
       {/* Header + Segmented Filter */}
-      <div className="px-4 py-3 border-b border-slate-200 dark:border-[#1C2331] flex items-center justify-between gap-3">
+      
+      {/* Cooldown Banner */}
+      {cooldownSeconds > 0 && (
+        <div className="px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800/40">
+          <div className="flex items-center gap-2 text-sm">
+            <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+            <span className="font-medium text-amber-900 dark:text-amber-100">
+              Cooldown Activ: {Math.floor(cooldownSeconds / 60)}:{String(cooldownSeconds % 60).padStart(2, '0')}
+            </span>
+            <span className="text-amber-700 dark:text-amber-300">
+              dupa {cooldownReason}
+            </span>
+          </div>
+        </div>
+      )}
+<div className="px-4 py-3 border-b border-slate-200 dark:border-[#1C2331] flex items-center justify-between gap-3">
         <div>
           <h2 className="font-display text-sm font-semibold text-slate-900 dark:text-white">
             Semnale XAU/USD
