@@ -182,7 +182,7 @@ export class SignalGeneratorEngine {
 
     this.signals = [];
     // Seed authentic historical walk-forward evaluated signals from real candle history
-    this.seedHistoricalEvaluatedSignals();
+    // this.seedHistoricalEvaluatedSignals(); // DEZACTIVAT
     // Generate initial calibrated live active signal from current market structure
     this.evaluateAndGenerateSignal('M15', true);
     // Keep newest signals first
@@ -629,19 +629,26 @@ export class SignalGeneratorEngine {
     const { indicators, structure, confluenceScore, mtfMatrix } = report;
     const price = this.marketFeed.getTick().mid;
 
-    let direction: SignalDirection | null = null;
-    if (confluenceScore >= 22) direction = 'BUY';
-    else if (confluenceScore <= -22) direction = 'SELL';
-    else if (forceWhenEmpty && openSignals.length === 0) {
-      direction = indicators.ema20 >= indicators.ema50 ? 'BUY' : 'SELL';
+    // === FTMO 50K SPEEDRUN: M15 9/21 EMA Cross + H1 200 EMA Filter ===
+    const m15Candles = this.marketFeed.getCandles('M15');
+    const h1Candles = this.marketFeed.getCandles('H1');
+    if (!m15Candles || m15Candles.length < 25 || !h1Candles || h1Candles.length < 100) {
+      return { signal: null, blockReason: 'Date insuficiente M15/H1' };
     }
-
-    if (!direction) {
-      return {
-        signal: null,
-        blockReason: `Confluența multi-timeframe (${confluenceScore}) este neutră. Nu se forțează intrare fără direcție clară.`,
-      };
-    }
+    const lastM15 = m15Candles[m15Candles.length - 1];
+    const prevM15 = m15Candles.slice(0, -1);
+    const lastH1 = h1Candles[h1Candles.length - 1];
+    const calcEMA = (data: any[], p: number) => { let e = data[0].close; const k = 2/(p+1); for(let i=1;i<data.length;i++) e = data[i].close*k + e*(1-k); return e; };
+    const ema9 = calcEMA(m15Candles, 9), prevEma9 = calcEMA(prevM15, 9);
+    const ema21 = calcEMA(m15Candles, 21), prevEma21 = calcEMA(prevM15, 21);
+    const h1Ema200 = calcEMA(h1Candles, 200);
+    const isH1Bull = lastH1.close > h1Ema200, isH1Bear = lastH1.close < h1Ema200;
+    let direction: SignalDirection | null = null, blockReason = '';
+    if (isH1Bull && ema9 > ema21 && prevEma9 <= prevEma21) direction = 'BUY';
+    else if (isH1Bear && ema9 < ema21 && prevEma9 >= prevEma21) direction = 'SELL';
+    else blockReason = 'Fără cross 9/21 EMA pe M15 aliniat cu H1 200 EMA.';
+    if (!direction) return { signal: null, blockReason };
+    // === END FTMO STRATEGY ===
 
     // CRITICAL GUARD: NEVER open an opposite direction signal while an active trade is open!
     const openOpposite = openSignals.find((s) => s.direction !== direction);
@@ -663,12 +670,18 @@ export class SignalGeneratorEngine {
       };
     }
 
+    // === FTMO 50K SPEEDRUN: 1.5 ATR SL, SINGLE TP at 1.5 RR ===
     const atr = Math.max(2.2, indicators.atr14);
-    const slDist = round2(atr * 1.45);
-    const tp1Dist = round2(slDist * 1.15);
-    const tp2Dist = round2(slDist * 1.9);
-    const tp3Dist = round2(slDist * 2.8);
-    const tp4Dist = round2(slDist * 3.8);
+    const slDist = round2(atr * 1.5);      // Stop Loss la 1.5 ATR
+    const targetDist = round2(slDist * 1.5); // Single Target la 1.5R (RR 1:1.5)
+    
+    // Setăm TOATE TP-urile la aceeași distanță pentru a simula un singur TP, 
+    // păstrând compatibilitatea cu dashboard-ul care așteaptă 4 niveluri.
+    const tp1Dist = targetDist;
+    const tp2Dist = targetDist;
+    const tp3Dist = targetDist;
+    const tp4Dist = targetDist;
+    // === END FTMO STRATEGY ===
 
     const entry = round2(price);
     const stopLoss = round2(direction === 'BUY' ? entry - slDist : entry + slDist);

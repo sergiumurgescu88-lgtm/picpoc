@@ -153,6 +153,20 @@ async function bootstrapServer() {
   const signalEngine = new SignalGeneratorEngine(marketFeed, stateStore);
   signalEngine.initialize();
 
+  // === AUTO-SCAN CONTINUU: Verifică piața la fiecare 60 de secunde ===
+  setInterval(() => {
+    try {
+      const { signal, blockReason } = signalEngine.evaluateAndGenerateSignalWithReason('M15', false);
+      if (signal) {
+        console.log(`[SSociety Team] ✅ Semnal nou generat automat: ${signal.direction} ${signal.symbol} @ ${signal.entry}`);
+        notificationHub.emitNewSignal(signal);
+      }
+    } catch (err) {
+      console.error('[SSociety Team] Eroare la auto-scan:', err);
+    }
+  }, 60000); // 60000 ms = 1 minut
+  // === END AUTO-SCAN ===
+
   const wss = new WebSocketServer({
     server,
     path: '/ws',

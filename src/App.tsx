@@ -12,6 +12,8 @@ import { SignalResolutionPanel } from './components/SignalResolutionPanel';
 import { TechnicalAnalysisPanel } from './components/TechnicalAnalysisPanel';
 import { VolatilityHeatmap } from './components/VolatilityHeatmap';
 import { WorkspaceToolbar } from './components/WorkspaceToolbar';
+import { StrategyStatusBanner } from './components/StrategyStatusBanner';
+
 import { useTradingTerminal } from './hooks/useTradingTerminal';
 
 export default function App() {
@@ -81,6 +83,17 @@ export default function App() {
         onToggleTheme={() => setIsDark((v) => !v)}
         onQuickAddPriceAlert={createAlertRule}
       />
+
+      {/* FTMO Strategy Status Banner */}
+      <div className="max-w-[1600px] w-full mx-auto px-4 sm:px-6 pt-4">
+        <StrategyStatusBanner
+          atr14={analysis?.indicators?.atr14 ?? null}
+          currentPrice={tick?.mid ?? null}
+          ema200M15={analysis?.emaSeries?.ema200?.[analysis.emaSeries.ema200.length - 1]?.value ?? null}
+          activeSignal={signals.find((s) => s.status === 'ACTIVE') ?? null}
+          isScanning={isScanning}
+        />
+      </div>
 
       {errorMessage && (
         <div className="max-w-[1600px] w-full mx-auto px-4 sm:px-6 pt-4">
